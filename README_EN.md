@@ -43,6 +43,7 @@ Currently, almost all Agent frameworks attempt to solve the memory problem using
 | ❸ | **Trigger Blindness**: Relies on cosine similarity for blind extraction. Cannot implement conditional recall like "when X happens, remember Y" | AI recall is random, not precise |
 | ❹ | **No Identity Layer**: RAG has no concept of "this memory matters more than that one," and no boot protocol for "who am I" | Every startup, the AI is a stranger |
 | ❺ | **Proxy Memory**: A background system auto-summarizes conversations. The AI doesn't know what it "remembers" and has no say in what gets recorded. Memories are third-person surveillance notes, not the AI's own cognitive output | The AI is the object of memory, not the subject |
+| ❻ | **Memory Islands**: Tree structures only have vertical parent-child links; vector spaces only have fuzzy cosine distances — node A mentions "a concept," but the system has no way to auto-discover that node B discusses the same concept | AI knowledge is an archipelago of islands, not an interconnected continent |
 
 ## 🩸 The Solution: Nocturne Memory via MCP
 
@@ -55,6 +56,7 @@ Currently, almost all Agent frameworks attempt to solve the memory problem using
 | ❸ | **🎯 Disclosure Routing (Conditional Trigger)**: Each memory is bound to a human-readable trigger condition (`disclosure`), e.g., *"When the user mentions project X."* AI injects contextually, not blindly. | Trigger Blindness |
 | ❹ | **🧠 System Boot Identity Protocol**: Users configure a `CORE_MEMORY_URIS` list in `.env`. On startup, `system://boot` automatically loads these core memories. The AI wakes up knowing who it is, who its user is, and what its mission is. **Configure once, awaken forever.** | No Identity Layer |
 | ❺ | **🗡️ First-Person Sovereign Memory**: No background summarization system. Every memory is created, organized, and maintained by the AI itself — a cognitive artifact written from its own perspective, not a dossier compiled by the system on its behalf. **Memories belong to the one who writes them, not the system that monitors them.** | Proxy Memory |
+| ❻ | **📖 Glossary Auto-Hyperlinking (豆辞典)**: Bind keywords to memory nodes (e.g., `"Salem"` → `core://my_user`). When any memory's content contains that keyword, the system detects it via Aho-Corasick multi-pattern matching and auto-generates cross-node hyperlinks. **The more you write, the denser the web — the memory network weaves itself.** | Memory Islands |
 
 ---
 
@@ -119,6 +121,7 @@ Special entry points:
 *   `system://index` → **Full memory index**
 *   `system://index/<domain>` → **Domain-specific memory index** (e.g. `system://index/core`)
 *   `system://recent` → **Recently modified memories**
+*   `system://glossary` → **Glossary (full keyword ↔ node reference map)**
 
 ---
 
@@ -291,7 +294,7 @@ Find and clean up old versions deprecated by `update_memory` and orphaned memori
 
 ## 🤖 MCP Tool Reference
 
-The AI operates its own memories through **6 tools** via the MCP protocol:
+The AI operates its own memories through **7 tools** via the MCP protocol:
 
 | Tool | Purpose |
 |------|---------|
@@ -300,6 +303,7 @@ The AI operates its own memories through **6 tools** via the MCP protocol:
 | `update_memory` | Precisely modify existing memories (Patch mode / Append mode). **No full replacement** — prevents accidental overwrites |
 | `delete_memory` | Sever an access path (does not delete the memory content itself) |
 | `add_alias` | Create an alias entry for the same memory, with independent priority and disclosure. **Not a copy** |
+| `manage_keywords` | Manage glossary keywords bound to a memory node, enabling automatic cross-node hyperlink mapping without parent-child hierarchies |
 | `search_memory` | Search memory content and paths by keyword (substring match) |
 
 > 📖 For full parameter descriptions and usage examples, see [MCP Tool Reference](docs/TOOLS.md).

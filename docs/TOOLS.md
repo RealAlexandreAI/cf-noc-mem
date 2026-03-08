@@ -1,6 +1,6 @@
 # MCP Tool Reference
 
-> 本文档是 Nocturne Memory MCP Server 提供的 6 个工具的完整参数说明。
+> 本文档是 Nocturne Memory MCP Server 提供的 7 个工具的完整参数说明。
 > 安装 MCP 后，AI 可以直接通过 tool docstring 获取这些信息，无需手动查阅。
 
 ---
@@ -18,6 +18,7 @@
 - `system://index/<domain>` — 特定域名记忆索引
 - `system://recent` — 最近修改的 10 条记忆
 - `system://recent/N` — 最近修改的 N 条记忆
+- `system://glossary` — 全量关键词库及节点引用映射
 
 ---
 
@@ -81,6 +82,19 @@ create_memory("core://", "Bluesky 使用规则...", priority=2, title="bluesky_m
 | `target_uri` | `str` | ✅ | 指向的目标 URI |
 | `priority` | `int` | ❌ | 此别名的独立优先级 |
 | `disclosure` | `str` | ❌ | 此别名的独立触发条件 |
+
+---
+
+## `manage_keywords(uri, add?, remove?)`
+为主机节点绑定关键词（Glossary Keyword），当任何记忆正文中出现该关键词时，系统会自动在底部悬挂该节点的系统级超链接（知识图谱）。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `uri` | `str` | ✅ | 目标节点 URI |
+| `add` | `List[str]` | ❌ | 要绑定的关键词列表，如 `["Salem", "User"]` |
+| `remove` | `List[str]` | ❌ | 要解绑的关键词列表 |
+
+> 💡 **查询全局关键词库：** 执行 `read_memory("system://glossary")`
 
 ---
 
