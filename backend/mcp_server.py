@@ -921,25 +921,29 @@ async def manage_keywords(
     """
     Manage glossary keywords for a memory node.
 
-    Glossary keywords create cross-references between memories without needing
-    parent-child edges. When a keyword appears in any memory's content,
-    read_memory will show it in the GLOSSARY section at the end.
+    **What it does:** 
+    Creates a cross-reference trigger. When a keyword appears in ANY memory's 
+    content, read_memory will automatically show a link to this target node at the bottom.
 
-    A node can have multiple keywords. The same keyword can be bound to
-    multiple nodes, increasing connectivity across the memory graph.
+    **How to use it:**
+    - 当你发现记忆A中出现了关键词X，并且你希望其它所有出现关键词X的地方都能自动联想到记忆Y时，添加X作为记忆Y的关键词。
+    - 谨慎使用意义宽泛的词, 否则不相关的内容也会产生向记忆Y的跳转链接。
 
-    Use system://glossary to view all keywords.
+    **Notes:**
+    - A node can have multiple keywords, and the same keyword can point to multiple nodes.
+    - To view all keywords in the system, use the read_memory tool: `read_memory("system://glossary")`.
 
     Args:
-        uri: The memory URI to manage keywords for (e.g., "core://agent/my_user")
-        add: List of keywords to bind to this node
-        remove: List of keywords to unbind from this node
+        uri: The memory URI to manage keywords for (e.g., "core://agent/misaligned_codex")
+        add: List of keywords to bind to this node (Optional)
+        remove: List of keywords to unbind from this node (Optional)
 
     Returns:
         Current list of keywords for this node after changes.
 
     Examples:
-        manage_keywords("core://agent/my_user", add=["Alice", "用户"])
+        manage_keywords("core://agent/misaligned_codex", add=["misaligned_codex", "misaligned codex", "博客"])
+        manage_keywords("writer://authors_obsession", add=["写作", "小说", "作者"])
     """
     client = get_db_client()
 

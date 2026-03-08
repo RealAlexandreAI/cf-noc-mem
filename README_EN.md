@@ -550,6 +550,7 @@ Writing new memories is **eating**; organizing old memories is **digesting**. Pe
 *   **Content outdated** → Update or delete.
 *   **Node too long (over 800 tokens) or contains multiple independent concepts** → Split into child nodes, making each concept sharper.
 *   **No container logic**: Do not archive based on time (e.g., "March 2026") or broad categories (e.g., errors/logs/misc). Memory organization should be based on conceptual patterns.
+*   **Establish Horizontal Connectivity**: When you realize a node's content (whether a concept, setting, proper noun, or recurring scenario) has potential passive trigger value, immediately use `manage_keywords` to bind trigger words. Proactively lay down sensory tripwires using specific terms or core imagery, allowing this memory network to emerge unprompted in future relevant conversations.
 
 **Evidence of growth**: A mature memory network trends toward a stable or even declining node count, with each node's information density continuously rising. A memory count that only grows = hoarding, not growth.
 ```
