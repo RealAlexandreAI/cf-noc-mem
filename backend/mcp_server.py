@@ -223,8 +223,24 @@ async def _fetch_and_format_memory(client, uri: str) -> str:
     lines.append("")
 
     # Content - directly, no header
-    lines.append(memory.get("content", "(empty)"))
+    content = memory.get("content", "(empty)")
+    lines.append(content)
     lines.append("")
+
+    # Glossary scan: detect glossary keywords present in the content
+    try:
+        glossary_matches = await client.find_glossary_in_content(content)
+        if glossary_matches:
+            lines.append("=" * 60)
+            lines.append("")
+            lines.append("GLOSSARY (keywords detected in this content)")
+            lines.append("")
+            for kw, nodes in sorted(glossary_matches.items()):
+                uris = ", ".join(n["uri"] for n in nodes)
+                lines.append(f"- @{kw} -> {uris}")
+            lines.append("")
+    except Exception:
+        pass  # Non-critical; don't break read_memory if glossary scan fails
 
     if children:
         lines.append("=" * 60)
@@ -449,6 +465,60 @@ async def _generate_recent_memories_view(limit: int = 10) -> str:
 
 
 # =============================================================================
+# Glossary Index View
+# =============================================================================
+
+
+async def _generate_glossary_index_view() -> str:
+    """Generate a view of all glossary keywords and their bound nodes."""
+    client = get_db_client()
+
+    try:
+        raw_entries = await client.get_all_glossary()
+        
+        # Filter out truly pathless (unlinked) nodes
+        entries = []
+        for entry in raw_entries:
+            valid_nodes = [
+                node for node in entry.get("nodes", [])
+                if not node.get("uri", "").startswith("unlinked://")
+            ]
+            if valid_nodes:
+                entries.append({
+                    "keyword": entry["keyword"],
+                    "nodes": valid_nodes
+                })
+
+        lines = [
+            "# Glossary Index",
+            f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"# Total: {len(entries)} keywords",
+            "",
+        ]
+
+        if not entries:
+            lines.append("(No glossary keywords defined yet.)")
+            lines.append("")
+            lines.append(
+                "Use manage_keywords(uri, add=[...]) to bind keywords to memory nodes."
+            )
+            return "\n".join(lines)
+
+        for entry in entries:
+            kw = entry["keyword"]
+            nodes = entry["nodes"]
+            lines.append(f"- {kw}")
+            for node in nodes:
+                lines.append(f"  -> {node['uri']}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error generating glossary index: {str(e)}"
+
+
+# =============================================================================
 # MCP Tools
 # =============================================================================
 
@@ -466,6 +536,7 @@ async def read_memory(uri: str) -> str:
     - system://index/<domain> : Loads an index of memories only under the specified domain (e.g. system://index/writer).
     - system://recent : Shows recently modified memories (default: 10).
     - system://recent/N : Shows the N most recently modified memories (e.g. system://recent/20).
+    - system://glossary : Shows all glossary keywords and their bound nodes.
 
     Note: Same Memory ID = same content (alias). Different ID + similar content = redundant content.
 
@@ -494,6 +565,10 @@ async def read_memory(uri: str) -> str:
         return await _generate_memory_index_view(
             domain_filter=domain_filter if domain_filter else None
         )
+
+    # system://glossary
+    if stripped == "system://glossary":
+        return await _generate_glossary_index_view()
 
     # system://recent or system://recent/N
     stripped = uri.strip()
@@ -830,6 +905,120 @@ async def add_alias(
         )
 
         return f"Success: Alias '{result['new_uri']}' now points to same memory as '{result['target_uri']}'"
+
+    except ValueError as e:
+        return f"Error: {str(e)}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+@mcp.tool()
+async def manage_keywords(
+    uri: str,
+    add: Optional[List[str]] = None,
+    remove: Optional[List[str]] = None,
+) -> str:
+    """
+    Manage glossary keywords for a memory node.
+
+    Glossary keywords create cross-references between memories without needing
+    parent-child edges. When a keyword appears in any memory's content,
+    read_memory will show it in the GLOSSARY section at the end.
+
+    A node can have multiple keywords. The same keyword can be bound to
+    multiple nodes, increasing connectivity across the memory graph.
+
+    Use system://glossary to view all keywords.
+
+    Args:
+        uri: The memory URI to manage keywords for (e.g., "core://agent/my_user")
+        add: List of keywords to bind to this node
+        remove: List of keywords to unbind from this node
+
+    Returns:
+        Current list of keywords for this node after changes.
+
+    Examples:
+        manage_keywords("core://agent/my_user", add=["Alice", "用户"])
+    """
+    client = get_db_client()
+
+    try:
+        domain, path = parse_uri(uri)
+        full_uri = make_uri(domain, path)
+
+        memory = await client.get_memory_by_path(path, domain)
+        if not memory:
+            return f"Error: Memory at '{full_uri}' not found."
+
+        node_uuid = memory["node_uuid"]
+
+        if add and remove:
+            add_set = {k.strip() for k in add if k.strip()}
+            remove_set = {k.strip() for k in remove if k.strip()}
+            overlap = add_set.intersection(remove_set)
+            if overlap:
+                return f"Error: Cannot add and remove the same keywords simultaneously: {', '.join(sorted(overlap))}"
+
+        added = []
+        skipped_add = []
+        removed = []
+        skipped_remove = []
+
+        before_state = {"glossary_keywords": []}
+        after_state = {"glossary_keywords": []}
+
+        if add:
+            for kw in add:
+                kw = kw.strip()
+                if not kw:
+                    continue
+                try:
+                    result = await client.add_glossary_keyword(kw, node_uuid)
+                    added.append(kw)
+                    if "rows_before" in result:
+                        before_state["glossary_keywords"].extend(result["rows_before"].get("glossary_keywords", []))
+                    if "rows_after" in result:
+                        after_state["glossary_keywords"].extend(result["rows_after"].get("glossary_keywords", []))
+                except ValueError:
+                    skipped_add.append(kw)
+
+        if remove:
+            for kw in remove:
+                kw = kw.strip()
+                if not kw:
+                    continue
+                result = await client.remove_glossary_keyword(kw, node_uuid)
+                if result.get("success"):
+                    removed.append(kw)
+                    if "rows_before" in result:
+                        before_state["glossary_keywords"].extend(result["rows_before"].get("glossary_keywords", []))
+                    if "rows_after" in result:
+                        after_state["glossary_keywords"].extend(result["rows_after"].get("glossary_keywords", []))
+                else:
+                    skipped_remove.append(kw)
+
+        if added or removed:
+            from db.snapshot import get_changeset_store
+            get_changeset_store().record_many(before_state, after_state)
+
+        current = await client.get_glossary_for_node(node_uuid)
+
+        lines = [f"Keywords for '{full_uri}':"]
+        if added:
+            lines.append(f"  Added: {', '.join(added)}")
+        if skipped_add:
+            lines.append(f"  Already existed (skipped): {', '.join(skipped_add)}")
+        if removed:
+            lines.append(f"  Removed: {', '.join(removed)}")
+        if skipped_remove:
+            lines.append(f"  Not found (skipped): {', '.join(skipped_remove)}")
+        if current:
+            lines.append(f"  Current: [{', '.join(current)}]")
+        else:
+            lines.append("  Current: (none)")
+
+        return "\n".join(lines)
 
     except ValueError as e:
         return f"Error: {str(e)}"

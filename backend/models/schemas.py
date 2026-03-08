@@ -26,6 +26,11 @@ class PathChange(BaseModel):
     uri: str
 
 
+class GlossaryChange(BaseModel):
+    action: str  # "created", "deleted"
+    keyword: str
+
+
 class UriDiff(BaseModel):
     """Diff between before-state and current DB state for one URI."""
     uri: str
@@ -36,6 +41,7 @@ class UriDiff(BaseModel):
     before_meta: Optional[Dict[str, Any]] = None
     current_meta: Optional[Dict[str, Any]] = None
     path_changes: Optional[List[PathChange]] = None
+    glossary_changes: Optional[List[GlossaryChange]] = None
     active_paths: Optional[List[str]] = None
     has_changes: bool
 

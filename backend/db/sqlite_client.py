@@ -288,6 +288,10 @@ class SQLiteClient:
             self.engine, class_=AsyncSession, expire_on_commit=False
         )
 
+        # Glossary Aho-Corasick automaton cache (cross-process safe via DB fingerprint)
+        self._glossary_automaton = None
+        self._glossary_fingerprint = None  # (count, max_id) tuple
+
     def _detect_database_type(self, url: str) -> str:
         """Detect database type from connection URL."""
         if "postgresql" in url:
@@ -2086,7 +2090,7 @@ class SQLiteClient:
                         snippet = content[:100].replace("\n", " ")
                         if len(content) > 100:
                             snippet += "..."
-                    uri = f"{domain}://{path}" if domain and path else f"unlinked://{node_uuid}"
+                    uri = f"{domain}://{path}" if domain is not None and path is not None else f"unlinked://{node_uuid}"
                     groups[keyword][node_uuid] = {
                         "node_uuid": node_uuid,
                         "uri": uri,
@@ -2103,31 +2107,59 @@ class SQLiteClient:
     ) -> Dict[str, List[Dict[str, str]]]:
         """Scan content for glossary keywords using Aho-Corasick.
 
+        Uses a DB-level fingerprint (row count + max id + max created_at) to detect staleness,
+        so cross-process writes (Web API, rollback, cascade delete) are caught
+        without relying on in-process flags.
+
         Returns dict of keyword -> list of {node_uuid, uri} for matches found.
         """
         import ahocorasick
+        from sqlalchemy import func
 
         async with self.session() as session:
-            kw_result = await session.execute(
-                select(GlossaryKeyword.keyword).distinct()
+            fp_row = await session.execute(
+                select(
+                    func.count(GlossaryKeyword.id),
+                    func.coalesce(func.max(GlossaryKeyword.id), 0),
+                    func.max(GlossaryKeyword.created_at),
+                )
             )
-            all_keywords = [row[0] for row in kw_result.all()]
+            current_fp = tuple(fp_row.one())
+
+        if current_fp[0] == 0:
+            self._glossary_automaton = None
+            self._glossary_fingerprint = current_fp
+            return {}
+
+        if current_fp != self._glossary_fingerprint:
+            async with self.session() as session:
+                kw_result = await session.execute(
+                    select(GlossaryKeyword.keyword).distinct()
+                )
+                all_keywords = [row[0] for row in kw_result.all()]
 
             if not all_keywords:
-                return {}
+                self._glossary_automaton = None
+            else:
+                automaton = ahocorasick.Automaton()
+                for kw in all_keywords:
+                    automaton.add_word(kw, kw)
+                automaton.make_automaton()
+                self._glossary_automaton = automaton
 
-            automaton = ahocorasick.Automaton()
-            for kw in all_keywords:
-                automaton.add_word(kw, kw)
-            automaton.make_automaton()
+            self._glossary_fingerprint = current_fp
 
-            found_keywords: set = set()
-            for _, kw in automaton.iter(content):
-                found_keywords.add(kw)
+        if self._glossary_automaton is None:
+            return {}
 
-            if not found_keywords:
-                return {}
+        found_keywords: set = set()
+        for _, kw in self._glossary_automaton.iter(content):
+            found_keywords.add(kw)
 
+        if not found_keywords:
+            return {}
+
+        async with self.session() as session:
             result = await session.execute(
                 select(
                     GlossaryKeyword.keyword,
@@ -2147,7 +2179,7 @@ class SQLiteClient:
             matches: Dict[str, Dict[str, str]] = defaultdict(dict)
             for keyword, node_uuid, domain, path in result.all():
                 if node_uuid not in matches[keyword]:
-                    matches[keyword][node_uuid] = f"{domain}://{path}" if domain and path else f"unlinked://{node_uuid}"
+                    matches[keyword][node_uuid] = f"{domain}://{path}" if domain is not None and path is not None else f"unlinked://{node_uuid}"
 
             return {
                 kw: [
