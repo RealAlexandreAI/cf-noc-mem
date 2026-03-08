@@ -37,6 +37,7 @@ from sqlalchemy import (
     not_,
     text,
 )
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base, relationship
 from dotenv import load_dotenv, find_dotenv
@@ -146,6 +147,33 @@ class Path(Base):
     edge = relationship("Edge", back_populates="paths")
 
 
+class GlossaryKeyword(Base):
+    """Glossary keyword-to-node binding (豆辞典).
+
+    When a keyword appears in a memory's content, the MCP layer surfaces
+    the associated nodes and the frontend highlights the keyword.
+    Multiple keywords can point to the same node, and the same keyword
+    can point to multiple nodes.
+    """
+
+    __tablename__ = "glossary_keywords"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    keyword = Column(Text, nullable=False)
+    node_uuid = Column(
+        String(36),
+        ForeignKey("nodes.uuid", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("keyword", "node_uuid", name="uq_glossary_keyword_node"),
+    )
+
+    node = relationship("Node")
+
+
 # =============================================================================
 # Change Collector
 # =============================================================================
@@ -168,6 +196,7 @@ class ChangeCollector:
         self.memories: List[Dict[str, Any]] = []
         self.edges: List[Dict[str, Any]] = []
         self.paths: List[Dict[str, Any]] = []
+        self.glossary_keywords: List[Dict[str, Any]] = []
 
     def record(self, table: str, row_data: Dict[str, Any]):
         if table == "memories":
@@ -180,6 +209,7 @@ class ChangeCollector:
             "memories": self.memories,
             "edges": self.edges,
             "paths": self.paths,
+            "glossary_keywords": self.glossary_keywords,
         }
 
 
@@ -246,6 +276,14 @@ class SQLiteClient:
             )
 
         self.engine = create_async_engine(database_url, **engine_kwargs)
+        
+        if self.db_type == "sqlite":
+            @event.listens_for(self.engine.sync_engine, "connect")
+            def set_sqlite_pragma(dbapi_connection, connection_record):
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.close()
+
         self.async_session = async_sessionmaker(
             self.engine, class_=AsyncSession, expire_on_commit=False
         )
@@ -274,8 +312,15 @@ class SQLiteClient:
         from db.migrations.runner import run_migrations
 
         try:
+            from sqlalchemy import inspect as sa_inspect
+            
+            def check_initialized(connection):
+                return sa_inspect(connection).has_table("memories")
+
             async with self.engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+                is_initialized = await conn.run_sync(check_initialized)
+                if not is_initialized:
+                    await conn.run_sync(Base.metadata.create_all)
 
             await run_migrations(self.engine)
         except Exception as e:
@@ -1008,7 +1053,15 @@ class SQLiteClient:
         for mem in mem_result.scalars().all():
             collector.record("memories", self._serialize_row(mem))
 
-        await session.execute(delete(Memory).where(Memory.node_uuid == node_uuid))
+        kw_result = await session.execute(
+            select(GlossaryKeyword).where(GlossaryKeyword.node_uuid == node_uuid)
+        )
+        for kw in kw_result.scalars().all():
+            collector.record("glossary_keywords", self._serialize_row(kw))
+
+        await session.execute(
+            delete(Memory).where(Memory.node_uuid == node_uuid)
+        )
         node_row = await session.execute(select(Node).where(Node.uuid == node_uuid))
         node = node_row.scalar_one_or_none()
         if node:
@@ -1896,6 +1949,7 @@ class SQLiteClient:
                 "memories": [delete_result["deleted_memory_before"]],
                 "edges": [],
                 "paths": [],
+                "glossary_keywords": [],
             }
 
             response: Dict[str, Any] = {
@@ -1907,13 +1961,201 @@ class SQLiteClient:
             if node_uuid:
                 gc_snapshot = await self._gc_node_if_memoryless(session, node_uuid)
                 if gc_snapshot:
-                    for table in ("nodes", "memories", "edges", "paths"):
+                    for table in ("nodes", "memories", "edges", "paths", "glossary_keywords"):
                         rows_before[table].extend(gc_snapshot.get(table, []))
 
             response["rows_before"] = rows_before
             response["rows_after"] = {}
 
             return response
+
+    # =========================================================================
+    # Glossary (豆辞典) Operations
+    # =========================================================================
+
+    async def add_glossary_keyword(
+        self, keyword: str, node_uuid: str
+    ) -> Dict[str, Any]:
+        """Bind a glossary keyword to a node."""
+        keyword = keyword.strip()
+        if not keyword:
+            raise ValueError("Glossary keyword cannot be empty")
+            
+        from sqlalchemy.exc import IntegrityError
+        
+        async with self.session() as session:
+            node = await session.get(Node, node_uuid)
+            if not node:
+                raise ValueError(f"Node '{node_uuid}' not found")
+
+            entry = GlossaryKeyword(keyword=keyword, node_uuid=node_uuid)
+            session.add(entry)
+            
+            try:
+                await session.flush()
+            except IntegrityError:
+                raise ValueError(f"Keyword '{keyword}' is already bound to this node")
+            
+            row_after = self._serialize_row(entry)
+
+            return {
+                "id": entry.id, 
+                "keyword": keyword, 
+                "node_uuid": node_uuid,
+                "rows_before": {"glossary_keywords": []},
+                "rows_after": {"glossary_keywords": [row_after]},
+            }
+
+    async def remove_glossary_keyword(
+        self, keyword: str, node_uuid: str
+    ) -> Dict[str, Any]:
+        """Remove a glossary keyword binding."""
+        keyword = keyword.strip()
+        async with self.session() as session:
+            existing = await session.execute(
+                select(GlossaryKeyword).where(
+                    GlossaryKeyword.keyword == keyword,
+                    GlossaryKeyword.node_uuid == node_uuid,
+                )
+            )
+            entry = existing.scalar_one_or_none()
+            if not entry:
+                return {
+                    "success": False,
+                    "rows_before": {"glossary_keywords": []},
+                    "rows_after": {"glossary_keywords": []},
+                }
+
+            row_before = self._serialize_row(entry)
+            
+            await session.execute(
+                delete(GlossaryKeyword).where(
+                    GlossaryKeyword.id == entry.id
+                )
+            )
+            
+            return {
+                "success": True,
+                "rows_before": {"glossary_keywords": [row_before]},
+                "rows_after": {"glossary_keywords": []},
+            }
+
+    async def get_glossary_for_node(self, node_uuid: str) -> List[str]:
+        """Get all keywords bound to a node."""
+        async with self.session() as session:
+            result = await session.execute(
+                select(GlossaryKeyword.keyword)
+                .where(GlossaryKeyword.node_uuid == node_uuid)
+                .order_by(GlossaryKeyword.keyword)
+            )
+            return [row[0] for row in result.all()]
+
+    async def get_all_glossary(self) -> List[Dict[str, Any]]:
+        """Get all glossary entries grouped by keyword, with node URIs."""
+        async with self.session() as session:
+            result = await session.execute(
+                select(
+                    GlossaryKeyword.keyword,
+                    GlossaryKeyword.node_uuid,
+                    Path.domain,
+                    Path.path,
+                    Memory.content,
+                )
+                .select_from(GlossaryKeyword)
+                .join(Node, Node.uuid == GlossaryKeyword.node_uuid)
+                .outerjoin(Edge, Edge.child_uuid == Node.uuid)
+                .outerjoin(Path, Path.edge_id == Edge.id)
+                .outerjoin(
+                    Memory,
+                    and_(
+                        Memory.node_uuid == Node.uuid,
+                        Memory.deprecated == False,
+                    ),
+                )
+                .order_by(GlossaryKeyword.keyword, Path.domain, Path.path)
+            )
+
+            from collections import defaultdict
+
+            groups: Dict[str, Dict[str, Dict[str, str]]] = defaultdict(dict)
+
+            for keyword, node_uuid, domain, path, content in result.all():
+                if node_uuid not in groups[keyword]:
+                    snippet = ""
+                    if content:
+                        snippet = content[:100].replace("\n", " ")
+                        if len(content) > 100:
+                            snippet += "..."
+                    uri = f"{domain}://{path}" if domain and path else f"unlinked://{node_uuid}"
+                    groups[keyword][node_uuid] = {
+                        "node_uuid": node_uuid,
+                        "uri": uri,
+                        "content_snippet": snippet,
+                    }
+
+            return [
+                {"keyword": kw, "nodes": list(node_map.values())}
+                for kw, node_map in groups.items()
+            ]
+
+    async def find_glossary_in_content(
+        self, content: str
+    ) -> Dict[str, List[Dict[str, str]]]:
+        """Scan content for glossary keywords using Aho-Corasick.
+
+        Returns dict of keyword -> list of {node_uuid, uri} for matches found.
+        """
+        import ahocorasick
+
+        async with self.session() as session:
+            kw_result = await session.execute(
+                select(GlossaryKeyword.keyword).distinct()
+            )
+            all_keywords = [row[0] for row in kw_result.all()]
+
+            if not all_keywords:
+                return {}
+
+            automaton = ahocorasick.Automaton()
+            for kw in all_keywords:
+                automaton.add_word(kw, kw)
+            automaton.make_automaton()
+
+            found_keywords: set = set()
+            for _, kw in automaton.iter(content):
+                found_keywords.add(kw)
+
+            if not found_keywords:
+                return {}
+
+            result = await session.execute(
+                select(
+                    GlossaryKeyword.keyword,
+                    GlossaryKeyword.node_uuid,
+                    Path.domain,
+                    Path.path,
+                )
+                .select_from(GlossaryKeyword)
+                .outerjoin(Edge, Edge.child_uuid == GlossaryKeyword.node_uuid)
+                .outerjoin(Path, Path.edge_id == Edge.id)
+                .where(GlossaryKeyword.keyword.in_(found_keywords))
+                .order_by(GlossaryKeyword.keyword, Path.domain, Path.path)
+            )
+
+            from collections import defaultdict
+
+            matches: Dict[str, Dict[str, str]] = defaultdict(dict)
+            for keyword, node_uuid, domain, path in result.all():
+                if node_uuid not in matches[keyword]:
+                    matches[keyword][node_uuid] = f"{domain}://{path}" if domain and path else f"unlinked://{node_uuid}"
+
+            return {
+                kw: [
+                    {"node_uuid": nid, "uri": uri}
+                    for nid, uri in node_map.items()
+                ]
+                for kw, node_map in matches.items()
+            }
 
 
 # =============================================================================
