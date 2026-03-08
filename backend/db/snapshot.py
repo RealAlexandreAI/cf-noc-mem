@@ -34,12 +34,13 @@ DEFAULT_SNAPSHOT_DIR = _default_snapshot_dir()
 
 _CHANGESET_FILENAME = "changeset.json"
 
-TABLE_ORDER = ["nodes", "memories", "edges", "paths"]
+TABLE_ORDER = ["nodes", "memories", "edges", "paths", "glossary_keywords"]
 TABLE_PKS = {
     "nodes": "uuid",
     "memories": "id",
     "edges": "id",
     "paths": ("domain", "path"),
+    "glossary_keywords": ("keyword", "node_uuid"),
 }
 
 
@@ -52,11 +53,17 @@ def _make_row_key(table: str, row: Dict[str, Any]) -> str:
     return f"{table}:{pk_val}"
 
 
-def _rows_equal(a: Optional[dict], b: Optional[dict]) -> bool:
+def _rows_equal(table: str, a: Optional[dict], b: Optional[dict]) -> bool:
     if a is None and b is None:
         return True
     if a is None or b is None:
         return False
+        
+    if table == "glossary_keywords":
+        a_copy = {k: v for k, v in a.items() if k not in ("id", "created_at")}
+        b_copy = {k: v for k, v in b.items() if k not in ("id", "created_at")}
+        return a_copy == b_copy
+        
     return a == b
 
 
@@ -234,7 +241,7 @@ class ChangesetStore:
     def _changed_rows(data: Dict[str, Any]) -> List[Dict[str, Any]]:
         result = []
         for entry in data.get("rows", {}).values():
-            if not _rows_equal(entry.get("before"), entry.get("after")):
+            if not _rows_equal(entry.get("table", ""), entry.get("before"), entry.get("after")):
                 result.append(entry)
         return result
 
@@ -259,9 +266,18 @@ class ChangesetStore:
         if not net_zero:
             return False
 
-        # Collect node_uuids still reachable from surviving path entries.
+        # Collect node_uuids still reachable from surviving path entries,
+        # and nodes that were newly created in this changeset.
         reachable = set()
+        created_nodes = set()
         for key, entry in rows.items():
+            if key.startswith("nodes:") and entry.get("before") is None:
+                # The uuid can be reliably extracted from the key "nodes:<uuid>",
+                # which handles both surviving created nodes (after is not None)
+                # and net-zero created nodes (after is None).
+                node_uuid = key.split(":", 1)[1]
+                created_nodes.add(node_uuid)
+
             if key in net_zero or not key.startswith("paths:"):
                 continue
             ref = entry.get("after") or entry.get("before")
@@ -290,7 +306,12 @@ class ChangesetStore:
                 if ref.get("uuid") not in reachable:
                     to_remove.add(key)
             elif key.startswith("memories:"):
-                if ref.get("node_uuid") not in reachable:
+                node_uuid = ref.get("node_uuid")
+                if node_uuid in created_nodes and node_uuid not in reachable:
+                    to_remove.add(key)
+            elif key.startswith("glossary_keywords:"):
+                node_uuid = ref.get("node_uuid")
+                if node_uuid in created_nodes and node_uuid not in reachable:
                     to_remove.add(key)
             elif key.startswith("edges:"):
                 eid = ref.get("id")

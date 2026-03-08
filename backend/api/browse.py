@@ -20,6 +20,16 @@ class NodeUpdate(BaseModel):
     disclosure: str | None = None
 
 
+class GlossaryAdd(BaseModel):
+    keyword: str
+    node_uuid: str
+
+
+class GlossaryRemove(BaseModel):
+    keyword: str
+    node_uuid: str
+
+
 @router.get("/domains")
 async def list_domains():
     """Return all domains that contain at least one root-level path."""
@@ -137,6 +147,12 @@ async def get_node(
                 if not (row[0] == domain and row[1] == path)
             ]
     
+    # Get glossary keywords for this node
+    glossary_keywords = []
+    node_uuid = memory.get("node_uuid")
+    if node_uuid and node_uuid != ROOT_NODE_UUID:
+        glossary_keywords = await client.get_glossary_for_node(node_uuid)
+
     return {
         "node": {
             "path": path,
@@ -148,7 +164,9 @@ async def get_node(
             "disclosure": memory["disclosure"],
             "created_at": memory["created_at"],
             "is_virtual": memory.get("node_uuid") == ROOT_NODE_UUID,
-            "aliases": aliases
+            "aliases": aliases,
+            "node_uuid": node_uuid,
+            "glossary_keywords": glossary_keywords,
         },
         "children": children,
         "breadcrumbs": breadcrumbs
@@ -184,3 +202,42 @@ async def update_node(
         raise HTTPException(status_code=422, detail=str(e))
     
     return {"success": True, "memory_id": result["new_memory_id"]}
+
+
+# =============================================================================
+# Glossary Endpoints
+# =============================================================================
+
+
+@router.get("/glossary")
+async def get_glossary():
+    """Get all glossary keywords with their associated nodes."""
+    client = get_db_client()
+    raw_entries = await client.get_all_glossary()
+    
+    return {"glossary": raw_entries}
+
+
+@router.post("/glossary")
+async def add_glossary_keyword(body: GlossaryAdd):
+    """Bind a keyword to a node."""
+    # Human-facing direct edit endpoint: intentionally bypasses changeset/review.
+    # The review queue tracks AI-authored mutations only.
+    client = get_db_client()
+    try:
+        result = await client.add_glossary_keyword(body.keyword, body.node_uuid)
+        return {"success": True, **result}
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.delete("/glossary")
+async def remove_glossary_keyword(body: GlossaryRemove):
+    """Remove a keyword binding from a node."""
+    # Human-facing direct edit endpoint: intentionally bypasses changeset/review.
+    # The review queue tracks AI-authored mutations only.
+    client = get_db_client()
+    result = await client.remove_glossary_keyword(body.keyword, body.node_uuid)
+    if not result.get("success"):
+        raise HTTPException(status_code=404, detail="Keyword binding not found")
+    return {"success": True}

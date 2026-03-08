@@ -48,6 +48,11 @@ def _resolve_node_uuid_sync(row: Dict[str, Any], all_rows: List[Dict[str, Any]],
         return ref.get("uuid")
     if table == "memories":
         return ref.get("node_uuid")
+    if table == "glossary_keywords":
+        # Glossary bindings belong to the node they annotate only.
+        # They are not part of the graph topology, so review grouping
+        # intentionally does not fold them into parent/child cascades.
+        return ref.get("node_uuid")
     if table == "edges":
         return ref.get("child_uuid")
     if table == "paths":
@@ -325,8 +330,8 @@ async def list_groups():
             
     result = []
     # Rank tables to determine the most significant change for UI icon display
-    TABLE_RANK = {"nodes": 4, "memories": 3, "edges": 2, "paths": 1}
-    RANK_TO_TABLE = {4: "nodes", 3: "memories", 2: "edges", 1: "paths"}
+    TABLE_RANK = {"nodes": 5, "memories": 4, "edges": 3, "paths": 2, "glossary_keywords": 1}
+    RANK_TO_TABLE = {5: "nodes", 4: "memories", 3: "edges", 2: "paths", 1: "glossary_keywords"}
     
     for node_uuid, rows in groups.items():
         tables_present = {r["table"] for r in rows}
@@ -515,8 +520,8 @@ async def get_group_diff(node_uuid: str):
 
     # Determine highest table rank to power the UI badge (e.g. "nodes changed")
     tables_present = {r["table"] for r in rows}
-    TABLE_RANK = {"nodes": 4, "memories": 3, "edges": 2, "paths": 1}
-    RANK_TO_TABLE = {4: "nodes", 3: "memories", 2: "edges", 1: "paths"}
+    TABLE_RANK = {"nodes": 5, "memories": 4, "edges": 3, "paths": 2, "glossary_keywords": 1}
+    RANK_TO_TABLE = {5: "nodes", 4: "memories", 3: "edges", 2: "paths", 1: "glossary_keywords"}
     top_rank = max((TABLE_RANK[t] for t in tables_present), default=1)
     top_table = RANK_TO_TABLE[top_rank]
 
@@ -540,6 +545,21 @@ async def get_group_diff(node_uuid: str):
                 path_changes.append({
                     "action": "deleted",
                     "uri": f"{r['before']['domain']}://{r['before']['path']}"
+                })
+                
+    # Extract glossary changes
+    glossary_changes = []
+    for r in rows:
+        if r["table"] == "glossary_keywords":
+            if r["before"] is None and r["after"] is not None:
+                glossary_changes.append({
+                    "action": "created",
+                    "keyword": r["after"]["keyword"]
+                })
+            elif r["before"] is not None and r["after"] is None:
+                glossary_changes.append({
+                    "action": "deleted",
+                    "keyword": r["before"]["keyword"]
                 })
                 
     # If the node was not deleted, fetch its current active paths from the live DB
@@ -580,7 +600,7 @@ async def get_group_diff(node_uuid: str):
                     current_meta["priority"] = edge.priority
                     current_meta["disclosure"] = edge.disclosure
 
-    has_changes = (before_content != current_content) or (before_meta != current_meta)
+    has_changes = (before_content != current_content) or (before_meta != current_meta) or bool(glossary_changes)
 
     return UriDiff(
         uri=node_uuid,
@@ -591,6 +611,7 @@ async def get_group_diff(node_uuid: str):
         before_meta=before_meta,
         current_meta=current_meta,
         path_changes=path_changes if path_changes else None,
+        glossary_changes=glossary_changes if glossary_changes else None,
         active_paths=active_paths if active_paths else None,
         has_changes=has_changes,
     )
@@ -616,8 +637,8 @@ async def rollback_group(node_uuid: str):
     
     db_edge_to_node = {}
     client = get_db_client()
-    from sqlalchemy import select, update
-    from db.sqlite_client import Edge
+    from sqlalchemy import select, update, delete
+    from db.sqlite_client import Edge, GlossaryKeyword, Node
     
     # Resolve edge_ids for path tracing
     edge_ids_to_resolve = set()
@@ -740,10 +761,53 @@ async def rollback_group(node_uuid: str):
                         except ValueError:
                             pass
 
+                # 5. Revert Glossary Keywords
+                for r in rows:
+                    if r["table"] == "glossary_keywords":
+                        if r["before"] is None and r["after"] is not None:
+                            # Revert creation -> delete
+                            await session.execute(
+                                delete(GlossaryKeyword).where(
+                                    GlossaryKeyword.keyword == r["after"]["keyword"],
+                                    GlossaryKeyword.node_uuid == r["after"]["node_uuid"]
+                                )
+                            )
+                            messages.append(f"Reverted glossary keyword addition ('{r['after']['keyword']}').")
+                        elif r["before"] is not None and r["after"] is None:
+                            # Revert deletion -> create
+                            b = r["before"]
+                            
+                            # Check if target node still exists to avoid foreign key error
+                            node_exists = (await session.execute(
+                                select(Node).where(Node.uuid == b["node_uuid"])
+                            )).scalar_one_or_none()
+                            
+                            if not node_exists:
+                                messages.append(f"Target node for glossary keyword ('{b['keyword']}') no longer exists, skipped restore.")
+                                continue
+
+                            # Check if the keyword already exists (e.g. manually re-added) to avoid unique constraint conflict
+                            existing = (await session.execute(
+                                select(GlossaryKeyword).where(
+                                    GlossaryKeyword.keyword == b["keyword"],
+                                    GlossaryKeyword.node_uuid == b["node_uuid"]
+                                )
+                            )).scalar_one_or_none()
+                            
+                            if not existing:
+                                entry = GlossaryKeyword(
+                                    keyword=b["keyword"],
+                                    node_uuid=b["node_uuid"],
+                                )
+                                session.add(entry)
+                                messages.append(f"Restored glossary keyword ('{b['keyword']}').")
+                            else:
+                                messages.append(f"Glossary keyword ('{b['keyword']}') already exists, skipped restore.")
+
         if not messages:
             messages.append("No rollback action required.")
 
-        # 5. Clean up the changeset store
+        # 6. Clean up the changeset store
         # Includes changed rows AND net-zero/unchanged rows that were linked to this group
         for row in all_rows:
             key = _make_row_key(row["table"], row["before"] if row["before"] else row["after"])
