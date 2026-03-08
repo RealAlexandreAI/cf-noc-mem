@@ -1,9 +1,8 @@
 import axios from 'axios';
 
-// 自定义事件：当收到 401 响应时触发，通知 App 切换到认证界面
 export const AUTH_ERROR_EVENT = 'nocturne:auth-error';
 
-const api = axios.create({
+export const api = axios.create({
   baseURL: '/api'
 });
 

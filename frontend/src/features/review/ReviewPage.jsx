@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { getGroups, getGroupDiff, rollbackGroup, approveGroup, clearAll } from '../../lib/api';
 import SnapshotList from '../../components/SnapshotList';
-import { SimpleDiff } from '../../components/DiffViewer';
+import DiffViewer from '../../components/DiffViewer';
 import {
   Activity,
   Check,
@@ -370,7 +370,7 @@ function ReviewPage() {
                     <div className="bg-[#0A0A12]/50 rounded-xl border border-slate-800/50 p-1 min-h-[200px] shadow-2xl relative overflow-hidden">
                       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-indigo-500/20 to-transparent opacity-50"></div>
                       <div className="p-6 md:p-10">
-                        <SimpleDiff
+                        <DiffViewer
                           oldText={diffData.before_content ?? ''}
                           newText={diffData.current_content ?? ''}
                         />
