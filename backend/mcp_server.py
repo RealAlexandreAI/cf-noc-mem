@@ -218,6 +218,12 @@ async def _fetch_and_format_memory(client, uri: str) -> str:
     else:
         lines.append("Disclosure: (not set)")
 
+    node_keywords = await client.get_glossary_for_node(memory["node_uuid"])
+    if node_keywords:
+        lines.append(f"Keywords: [{', '.join(node_keywords)}]")
+    else:
+        lines.append("Keywords: (none)")
+
     lines.append("")
     lines.append("=" * 60)
     lines.append("")
