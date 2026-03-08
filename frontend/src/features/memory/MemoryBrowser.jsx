@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { 
   ChevronRight, 
@@ -16,7 +17,10 @@ import {
   ArrowLeft,
   AlertTriangle,
   Link2,
-  Star
+  Star,
+  BookOpen,
+  Plus,
+  Tag
 } from 'lucide-react';
 import api from '../../lib/api';
 import clsx from 'clsx';
@@ -42,6 +46,291 @@ const PriorityBadge = ({ priority, size = 'sm' }) => {
       <Star size={size === 'lg' ? 12 : 9} />
       {priority}
     </span>
+  );
+};
+
+// --- Glossary Highlighting ---
+
+function findAllOccurrences(text, keywords) {
+  if (!keywords || keywords.length === 0 || !text) return [];
+
+  const matches = [];
+  for (const entry of keywords) {
+    if (!entry.keyword) continue;
+    let idx = text.indexOf(entry.keyword);
+    while (idx !== -1) {
+      matches.push({
+        start: idx,
+        end: idx + entry.keyword.length,
+        keyword: entry.keyword,
+        nodes: entry.nodes,
+      });
+      idx = text.indexOf(entry.keyword, idx + entry.keyword.length);
+    }
+  }
+
+  matches.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+
+  const result = [];
+  let lastEnd = -1;
+  for (const m of matches) {
+    if (m.start >= lastEnd) {
+      result.push(m);
+      lastEnd = m.end;
+    }
+  }
+  return result;
+}
+
+const GlossaryPopup = ({ keyword, nodes, position, onClose, onNavigate }) => {
+  const popupRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (popupRef.current && !popupRef.current.contains(e.target)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      ref={popupRef}
+      className="fixed z-[100] w-72 bg-[#0E0E18] border border-amber-800/40 rounded-xl shadow-2xl shadow-black/60 overflow-hidden flex flex-col"
+      style={{ 
+        left: position.x, 
+        ...(position.isAbove 
+          ? { bottom: window.innerHeight - position.spanTop + 4, maxHeight: position.spanTop - 16 } 
+          : { top: position.y + 4, maxHeight: window.innerHeight - position.y - 16 })
+      }}
+    >
+      <div className="px-3 py-2 border-b border-slate-800/60 flex items-center gap-2 flex-shrink-0">
+        <BookOpen size={12} className="text-amber-400" />
+        <span className="text-xs font-semibold text-amber-300">{keyword}</span>
+        <button onClick={onClose} className="ml-auto text-slate-600 hover:text-slate-400 transition-colors">
+          <X size={12} />
+        </button>
+      </div>
+      <div className="p-2 overflow-y-auto custom-scrollbar flex-1">
+        {nodes.map((node, i) => {
+          const isUnlinked = node.uri?.startsWith('unlinked://');
+          return (
+          <button
+            key={node.uri || i}
+            onClick={() => {
+              if (isUnlinked) return; // Don't navigate for unlinked nodes
+              const match = node.uri?.match(/^([^:]+):\/\/(.*)$/);
+              if (match) onNavigate(match[2], match[1]);
+              onClose();
+            }}
+            className={clsx(
+              "w-full text-left px-2.5 py-2 rounded-lg transition-colors group relative",
+              isUnlinked ? "cursor-default opacity-80 bg-slate-900/40" : "hover:bg-slate-800/60 cursor-pointer"
+            )}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <code className={clsx(
+                "text-[11px] font-mono block truncate flex-1",
+                isUnlinked ? "text-slate-500" : "text-indigo-400/80 group-hover:text-indigo-300"
+              )}>
+                {node.uri}
+              </code>
+              {isUnlinked && (
+                <span className="text-[9px] px-1.5 py-0.5 bg-rose-950/40 text-rose-400 border border-rose-900/50 rounded flex-shrink-0">
+                  Orphaned
+                </span>
+              )}
+            </div>
+            {node.content_snippet && (
+              <p className="text-[10px] text-slate-600 mt-0.5 line-clamp-2 leading-snug">
+                {node.content_snippet}
+              </p>
+            )}
+          </button>
+        )})}
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+const GlossaryHighlighter = ({ content, glossary, onNavigate }) => {
+  const [popup, setPopup] = useState(null);
+  const containerRef = useRef(null);
+
+  // Clear popup when content changes (e.g., when switching nodes)
+  useEffect(() => {
+    setPopup(null);
+  }, [content]);
+
+  const matches = useMemo(
+    () => findAllOccurrences(content, glossary),
+    [content, glossary]
+  );
+
+  const handleKeywordClick = useCallback((e, match) => {
+    const spanRect = e.target.getBoundingClientRect();
+    
+    const popupWidth = 288;
+    let x = spanRect.left;
+    if (x + popupWidth > window.innerWidth - 16) {
+      x = window.innerWidth - popupWidth - 16;
+      if (x < 16) x = 16;
+    }
+
+    const estimatedHeight = 250;
+    let y = spanRect.bottom;
+    let isAbove = false;
+    
+    if (y + estimatedHeight > window.innerHeight - 16 && spanRect.top > estimatedHeight + 16) {
+      isAbove = true;
+    }
+
+    setPopup({
+      keyword: match.keyword,
+      nodes: match.nodes,
+      position: {
+        x: x,
+        y: y,
+        isAbove: isAbove,
+        spanTop: spanRect.top,
+      },
+    });
+  }, []);
+
+  if (matches.length === 0) {
+    return <pre className="whitespace-pre-wrap font-serif text-slate-300 leading-7">{content}</pre>;
+  }
+
+  const parts = [];
+  let lastIdx = 0;
+  for (const m of matches) {
+    if (m.start > lastIdx) {
+      parts.push({ text: content.slice(lastIdx, m.start), isMatch: false });
+    }
+    parts.push({ text: content.slice(m.start, m.end), isMatch: true, match: m });
+    lastIdx = m.end;
+  }
+  if (lastIdx < content.length) {
+    parts.push({ text: content.slice(lastIdx), isMatch: false });
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <pre className="whitespace-pre-wrap font-serif text-slate-300 leading-7">
+        {parts.map((part, i) =>
+          part.isMatch ? (
+            <span
+              key={i}
+              className="text-amber-300 cursor-pointer underline decoration-dotted decoration-amber-600/50 hover:decoration-amber-400 hover:text-amber-200 transition-colors"
+              onClick={(e) => handleKeywordClick(e, part.match)}
+            >
+              {part.text}
+            </span>
+          ) : (
+            <React.Fragment key={i}>{part.text}</React.Fragment>
+          )
+        )}
+      </pre>
+      {popup && (
+        <GlossaryPopup
+          keyword={popup.keyword}
+          nodes={popup.nodes}
+          position={popup.position}
+          onClose={() => setPopup(null)}
+          onNavigate={onNavigate}
+        />
+      )}
+    </div>
+  );
+};
+
+// --- Keyword Management UI ---
+
+const KeywordManager = ({ keywords, nodeUuid, onUpdate }) => {
+  const [adding, setAdding] = useState(false);
+  const [newKeyword, setNewKeyword] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (adding && inputRef.current) inputRef.current.focus();
+  }, [adding]);
+
+  const handleAdd = async () => {
+    const kw = newKeyword.trim();
+    if (!kw || !nodeUuid) return;
+    try {
+      await api.post('/browse/glossary', { keyword: kw, node_uuid: nodeUuid });
+      setNewKeyword('');
+      setAdding(false);
+      onUpdate();
+    } catch (err) {
+      alert('Failed to add keyword: ' + (err.response?.data?.detail || err.message));
+    }
+  };
+
+  const handleRemove = async (kw) => {
+    if (!nodeUuid) return;
+    try {
+      await api.delete('/browse/glossary', { data: { keyword: kw, node_uuid: nodeUuid } });
+      onUpdate();
+    } catch (err) {
+      alert('Failed to remove keyword: ' + (err.response?.data?.detail || err.message));
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleAdd();
+    if (e.key === 'Escape') { setAdding(false); setNewKeyword(''); }
+  };
+
+  return (
+    <div className="flex items-start gap-2 text-xs text-slate-500">
+      <Tag size={13} className="flex-shrink-0 mt-0.5 text-amber-700" />
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-amber-700 font-medium">Glossary:</span>
+        {keywords.map(kw => (
+          <span
+            key={kw}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-950/30 border border-amber-800/30 rounded text-amber-400/80 font-mono text-[11px]"
+          >
+            {kw}
+            <button
+              onClick={() => handleRemove(kw)}
+              className="text-amber-700 hover:text-amber-400 transition-colors"
+            >
+              <X size={9} />
+            </button>
+          </span>
+        ))}
+        {adding ? (
+          <span className="inline-flex items-center gap-1">
+            <input
+              ref={inputRef}
+              type="text"
+              value={newKeyword}
+              onChange={e => setNewKeyword(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onBlur={() => { if (!newKeyword.trim()) setAdding(false); }}
+              placeholder="keyword..."
+              className="w-28 px-1.5 py-0.5 bg-slate-900 border border-amber-800/40 rounded text-amber-300 text-[11px] font-mono focus:outline-none focus:border-amber-500/50"
+            />
+            <button onClick={handleAdd} className="text-amber-600 hover:text-amber-400 transition-colors">
+              <Save size={11} />
+            </button>
+          </span>
+        ) : (
+          <button
+            onClick={() => setAdding(true)}
+            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 border border-dashed border-amber-800/30 rounded text-amber-700 hover:text-amber-400 hover:border-amber-600/40 transition-colors text-[11px]"
+          >
+            <Plus size={9} /> add
+          </button>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -81,7 +370,7 @@ const TreeNode = ({ domain, path, name, childrenCount, activeDomain, activePath,
   const fetchChildren = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/browse/node', { params: { domain, path } });
+      const res = await api.get('/browse/node', { params: { domain, path, nav_only: true } });
       setChildren(res.data.children);
       setFetched(true);
     } catch (err) {
@@ -182,7 +471,7 @@ const DomainNode = ({ domain, rootCount, activeDomain, activePath, onNavigate })
   const fetchChildren = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/browse/node', { params: { domain, path: '' } });
+      const res = await api.get('/browse/node', { params: { domain, path: '', nav_only: true } });
       setChildren(res.data.children);
       setFetched(true);
     } catch (err) {
@@ -369,7 +658,13 @@ export default function MemoryBrowser() {
   const [editPriority, setEditPriority] = useState(0);
   const [saving, setSaving] = useState(false);
 
-  // Fetch domain list
+  // Track current route to prevent race conditions on slow requests
+  const currentRouteRef = useRef({ domain, path });
+  useEffect(() => {
+    currentRouteRef.current = { domain, path };
+  }, [domain, path]);
+
+  // Fetch domain list on mount
   useEffect(() => {
     api.get('/browse/domains').then(res => setDomains(res.data)).catch(() => {});
   }, []);
@@ -439,7 +734,13 @@ export default function MemoryBrowser() {
       
       await api.put('/browse/node', payload, { params: { domain, path } });
       const res = await api.get('/browse/node', { params: { domain, path } });
-      setData(res.data);
+      setData(currentData => {
+        // Prevent race condition: only update if we are still viewing the exact same domain and path
+        if (currentRouteRef.current.domain === domain && currentRouteRef.current.path === path) {
+          return res.data;
+        }
+        return currentData;
+      });
       setEditing(false);
     } catch (err) {
       alert('Save failed: ' + err.message);
@@ -573,6 +874,27 @@ export default function MemoryBrowser() {
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* Glossary Keywords */}
+                                    {!editing && !node.is_virtual && (
+                                        <KeywordManager
+                                          keywords={node.glossary_keywords || []}
+                                          nodeUuid={node.node_uuid}
+                                          onUpdate={() => {
+                                            // Re-fetch node to update the keyword list shown in the manager
+                                            api.get('/browse/node', { params: { domain, path } })
+                                              .then(res => {
+                                                setData(currentData => {
+                                                  // Prevent race condition: only update if we are still viewing the exact same domain and path
+                                                  if (currentRouteRef.current.domain === domain && currentRouteRef.current.path === path) {
+                                                    return res.data;
+                                                  }
+                                                  return currentData;
+                                                });
+                                              });
+                                          }}
+                                        />
+                                    )}
                                 </div>
                                 
                                 {/* Edit / Save buttons */}
@@ -642,7 +964,12 @@ export default function MemoryBrowser() {
                                     />
                                 ) : (
                                     <div className="p-6 md:p-8 prose prose-invert prose-sm max-w-none">
-                                        <pre className="whitespace-pre-wrap font-serif text-slate-300 leading-7">{node.content}</pre>
+                                        <GlossaryHighlighter
+                                          key={node.node_uuid}
+                                          content={node.content || ''}
+                                          glossary={node.glossary_matches || []}
+                                          onNavigate={navigateTo}
+                                        />
                                     </div>
                                 )}
                             </div>

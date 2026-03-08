@@ -55,7 +55,8 @@ async def list_domains():
 @router.get("/node")
 async def get_node(
     path: str = Query("", description="URI path like 'nocturne' or 'nocturne/salem'"),
-    domain: str = Query("core")
+    domain: str = Query("core"),
+    nav_only: bool = Query(False, description="Skip expensive processing if only navigating tree")
 ):
     """
     Get a node's content and its direct children.
@@ -149,9 +150,21 @@ async def get_node(
     
     # Get glossary keywords for this node
     glossary_keywords = []
+    glossary_matches = []
     node_uuid = memory.get("node_uuid")
-    if node_uuid and node_uuid != ROOT_NODE_UUID:
-        glossary_keywords = await client.get_glossary_for_node(node_uuid)
+
+    if not nav_only:
+        if node_uuid and node_uuid != ROOT_NODE_UUID:
+            glossary_keywords = await client.get_glossary_for_node(node_uuid)
+
+        # Get all glossary matches for the node content using Aho-Corasick
+        if memory.get("content"):
+            matches_dict = await client.find_glossary_in_content(memory["content"])
+            if matches_dict:
+                glossary_matches = [
+                    {"keyword": kw, "nodes": nodes}
+                    for kw, nodes in matches_dict.items()
+                ]
 
     return {
         "node": {
@@ -167,6 +180,7 @@ async def get_node(
             "aliases": aliases,
             "node_uuid": node_uuid,
             "glossary_keywords": glossary_keywords,
+            "glossary_matches": glossary_matches,
         },
         "children": children,
         "breadcrumbs": breadcrumbs

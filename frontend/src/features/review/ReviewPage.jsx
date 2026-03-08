@@ -12,7 +12,8 @@ import {
   Database,
   Trash2,
   Box,
-  Link as LinkIcon
+  Link as LinkIcon,
+  BookOpen
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -166,6 +167,7 @@ function ReviewPage() {
       case 'memories': return <FileText size={18} />;
       case 'edges': return <LinkIcon size={18} />;
       case 'paths': return <Database size={18} />;
+      case 'glossary_keywords': return <BookOpen size={18} />;
       default: return <FileText size={18} />;
     }
   };
@@ -296,13 +298,13 @@ function ReviewPage() {
                           ? "bg-rose-500/5 border-rose-500/20 text-rose-500" 
                           : diffData.action === 'created'
                             ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-500"
-                            : (diffData.has_changes || diffData.path_changes?.length > 0)
+                            : (diffData.has_changes || diffData.path_changes?.length > 0 || diffData.glossary_changes?.length > 0)
                               ? "bg-amber-500/5 border-amber-500/20 text-amber-500"
                               : "bg-slate-800/50 border-slate-700 text-slate-500"
                       )}>
                         {diffData.action === 'deleted' ? "Deletion Detected" 
                           : diffData.action === 'created' ? "Creation Detected" 
-                          : (diffData.has_changes || diffData.path_changes?.length > 0) ? "Modification Detected" 
+                          : (diffData.has_changes || diffData.path_changes?.length > 0 || diffData.glossary_changes?.length > 0) ? "Modification Detected" 
                           : "No Content Deviation"}
                       </div>
                     </div>
@@ -338,6 +340,28 @@ function ReviewPage() {
                             </div>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {diffData.glossary_changes && diffData.glossary_changes.length > 0 && (
+                      <div className="mb-8 p-4 bg-slate-900/40 border border-slate-800/60 rounded-lg backdrop-blur-sm">
+                        <h3 className="text-xs font-bold text-slate-500 uppercase mb-4 flex items-center gap-2 tracking-widest">
+                          <BookOpen size={12} /> Glossary Keywords
+                        </h3>
+                        <div className="space-y-2">
+                          {diffData.glossary_changes.map((gc, i) => (
+                            <div key={i} className="flex items-center gap-3 text-sm">
+                              {gc.action === 'deleted' ? (
+                                <span className="text-rose-500/80 bg-rose-500/10 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">Removed</span>
+                              ) : (
+                                <span className="text-emerald-500/80 bg-emerald-500/10 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">Added</span>
+                              )}
+                              <span className={clsx("font-mono text-xs break-all", gc.action === 'deleted' ? "text-rose-400/70 line-through" : "text-emerald-400")}>
+                                {gc.keyword}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
 
