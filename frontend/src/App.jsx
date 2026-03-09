@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { ShieldCheck, Database, LayoutGrid, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
@@ -6,6 +6,8 @@ import clsx from 'clsx';
 import ReviewPage from './features/review/ReviewPage';
 import MemoryBrowser from './features/memory/MemoryBrowser';
 import MaintenancePage from './features/maintenance/MaintenancePage';
+import TokenAuth from './components/TokenAuth';
+import { AUTH_ERROR_EVENT } from './lib/api';
 
 function Layout() {
   return (
@@ -70,6 +72,30 @@ function Layout() {
 }
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return !!localStorage.getItem('api_token');
+  });
+
+  const handleAuthError = useCallback(() => {
+    setIsAuthenticated(false);
+  }, []);
+
+  const handleAuthenticated = useCallback(() => {
+    setIsAuthenticated(true);
+  }, []);
+
+  // 监听 401 事件，切换回认证界面
+  useEffect(() => {
+    window.addEventListener(AUTH_ERROR_EVENT, handleAuthError);
+    return () => {
+      window.removeEventListener(AUTH_ERROR_EVENT, handleAuthError);
+    };
+  }, [handleAuthError]);
+
+  if (!isAuthenticated) {
+    return <TokenAuth onAuthenticated={handleAuthenticated} />;
+  }
+
   return (
     <BrowserRouter>
       <Layout />
