@@ -1,3 +1,5 @@
+# pyright: reportMissingImports=false
+
 """
 MCP Server for Nocturne Memory System (SQLite Backend)
 
@@ -50,10 +52,12 @@ async def lifespan(server: FastMCP):
         # Initialize database ONLY after the MCP event loop has started.
         # This prevents "Event loop is closed" errors with asyncpg.
         db_client = get_db_client()
-        await db_client.init_db()
+        if not os.environ.get("SKIP_DB_INIT"):
+            await db_client.init_db()
         yield
     finally:
         await close_db_client()
+
 
 # Initialize FastMCP server with the lifespan hook
 mcp = FastMCP(
@@ -84,11 +88,8 @@ DEFAULT_DOMAIN = "core"
 # Format: full URIs (e.g., "core://agent", "core://agent/my_user")
 # =============================================================================
 CORE_MEMORY_URIS = [
-    uri.strip()
-    for uri in os.getenv("CORE_MEMORY_URIS", "").split(",")
-    if uri.strip()
+    uri.strip() for uri in os.getenv("CORE_MEMORY_URIS", "").split(",") if uri.strip()
 ]
-
 
 
 # =============================================================================
@@ -335,7 +336,14 @@ async def _generate_memory_index_view(domain_filter: Optional[str] = None) -> st
         # Primary = shortest depth → lowest priority value → alphabetical URI.
         entries = []  # list of primary_item
         for _key, items in node_groups.items():
-            items.sort(key=lambda x: (x["path"].count("/"), x.get("priority", 0), len(x["path"]), x.get("uri", "")))
+            items.sort(
+                key=lambda x: (
+                    x["path"].count("/"),
+                    x.get("priority", 0),
+                    len(x["path"]),
+                    x.get("uri", ""),
+                )
+            )
             entries.append(items[0])
 
         # --- Step 3: Organise primaries by domain → top-level segment ---
@@ -351,7 +359,9 @@ async def _generate_memory_index_view(domain_filter: Optional[str] = None) -> st
         lines = [
             "# Memory Index",
             f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"# Domain Filter: {domain_filter}" if domain_filter else "# Domain Filter: None (All Domains)",
+            f"# Domain Filter: {domain_filter}"
+            if domain_filter
+            else "# Domain Filter: None (All Domains)",
             f"# Total: {unique_nodes_count} unique nodes (aliases hidden for clarity)",
             "# Legend: [#ID] = Memory ID, [★N] = priority (lower = higher)",
             "",
@@ -481,7 +491,9 @@ async def read_memory(uri: str) -> str:
         domain_filter = stripped[len("system://index") :].strip("/")
         if domain_filter and domain_filter not in VALID_DOMAINS:
             return f"Error: Unknown domain '{domain_filter}'. Valid domains: {', '.join(VALID_DOMAINS)}"
-        return await _generate_memory_index_view(domain_filter=domain_filter if domain_filter else None)
+        return await _generate_memory_index_view(
+            domain_filter=domain_filter if domain_filter else None
+        )
 
     # system://recent or system://recent/N
     stripped = uri.strip()

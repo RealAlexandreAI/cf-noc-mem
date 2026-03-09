@@ -3,6 +3,7 @@ FROM python:3.12-slim
 # 安装系统依赖（libpq-dev 供 asyncpg/psycopg2 编译，gcc 供 C 扩展）
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        curl \
         libpq-dev \
         gcc \
     && rm -rf /var/lib/apt/lists/*

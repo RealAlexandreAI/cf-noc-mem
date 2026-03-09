@@ -19,7 +19,7 @@ services:
       context: ./backend
     command: uvicorn main:app --host 0.0.0.0 --port 8000
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?ssl=disable
       API_TOKEN: ${API_TOKEN}
     depends_on:
       postgres:
@@ -37,8 +37,9 @@ services:
       context: ./backend
     command: python run_sse.py
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?ssl=disable
       API_TOKEN: ${API_TOKEN}
+      SKIP_DB_INIT: "true"
       PORT: "8001"
       HOST: 0.0.0.0
     depends_on:

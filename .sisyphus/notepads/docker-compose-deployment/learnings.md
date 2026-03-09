@@ -12,3 +12,10 @@
 - `backend/db/sqlite_client.py` 已原生读取 `DATABASE_URL` 环境变量；`postgresql+asyncpg://` 会被识别为 PostgreSQL，并走 async engine / pooling 配置。
 - 当前 ORM 表仅使用 `String`、`Integer`、`Text`、`Boolean`、`DateTime`、`ForeignKey`、`UniqueConstraint`，均可被 PostgreSQL 方言正常编译；`backend/models/schemas.py` 仅含 Pydantic DTO，和底层数据库类型无耦合。
 - 启动验证使用独立虚拟环境 `/tmp/nocturne-backend-verify`：`/health` 返回 200 且 `database=connected`，受保护根路由未带 token 返回 401，带 Bearer token 返回 200，CORS 预检返回 200 并带 `access-control-allow-origin`。
+
+## [2026-03-09 22:24:00] Docker 部署阻塞修复
+- `backend/Dockerfile` 的 healthcheck 依赖 `curl`，若镜像只装 `libpq-dev` 和 `gcc`，`backend-api` 即使应用已启动也会因 `curl: not found` 被编排层判定为 unhealthy。
+- `backend/db/sqlite_client.py` 中 `from backend...` 这类绝对导入在 Docker 的 `/app` 工作目录下会失效；容器内运行后端源码时应统一使用 `from db...` 这种相对项目根的导入方式。
+- Docker Compose 中给 `postgresql+asyncpg://` 补 `?ssl=disable` 是连接本地 `postgres:16-alpine` 容器的必要条件，否则 asyncpg 会尝试 SSL 升级并被容器内 PostgreSQL 拒绝。
+- `backend/mcp_server.py` 的 lifespan 里，SSE 进程必须通过 `SKIP_DB_INIT` 跳过 `init_db()`，把数据库初始化职责收敛到 API 容器，避免并发启动时的竞态。
+- 本机宿主端口 `80` 被外部 openresty 占用时，Docker 验收可通过 `.env` 把 `NGINX_PORT` 调整为 `8080`；验收完成后要执行 `docker compose down -v`，确保不遗留容器与卷。 
