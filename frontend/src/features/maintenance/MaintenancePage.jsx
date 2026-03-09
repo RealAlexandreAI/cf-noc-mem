@@ -1,13 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import axios from 'axios';
+import api from '../../lib/api';
 import {
   Trash2, Sparkles, AlertTriangle, RefreshCw,
   ChevronDown, ChevronUp, ArrowRight, Unlink, Archive, CheckSquare, Square, Minus
 } from 'lucide-react';
 import { format } from 'date-fns';
 import DiffViewer from '../../components/DiffViewer';
-
-const api = axios.create({ baseURL: '/api' });
 
 export default function MaintenancePage() {
   const [orphans, setOrphans] = useState([]);

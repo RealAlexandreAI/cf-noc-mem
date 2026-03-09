@@ -327,6 +327,103 @@ SSE Endpoint: `http://localhost:8000/sse`
 
 ---
 
+## 🐳 Docker 部署
+
+除了本地 Python 安装，你还可以通过 Docker Compose 一键部署完整的 Nocturne Memory 服务栈（PostgreSQL + Backend API + SSE Server + Nginx 反向代理）。
+
+### 前置要求
+
+- [Docker](https://docs.docker.com/get-docker/) 24.0+
+- [Docker Compose](https://docs.docker.com/compose/install/) v2+
+
+### 快速开始
+
+1. **克隆项目**
+   ```bash
+   git clone https://github.com/Dataojitori/nocturne_memory.git
+   cd nocturne_memory
+   ```
+
+2. **复制环境变量配置文件**
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **编辑 `.env` 配置文件**
+   - **对于 Docker 部署**：你必须取消注释 `Docker Compose Configuration` 下的所有变量（`POSTGRES_*` 和 `NGINX_PORT`）。
+   - **如果你想启用密码保护**（推荐公网部署时使用）：取消注释并修改 `API_TOKEN` 变量。
+   - **如果只在本地单机使用 Docker**：保持 `API_TOKEN` 注释即可，系统会以无密码模式运行。
+   ```bash
+   nano .env  # 或使用你喜欢的编辑器
+   ```
+
+4. **构建并启动所有服务**
+   ```bash
+   docker compose up -d --build
+   ```
+
+5. **访问管理界面**
+   打开 `http://localhost`（或 `http://localhost:<NGINX_PORT>`）
+
+> 💡 首次启动时，`backend-api` 会自动初始化数据库表结构（通过 SQLAlchemy `create_all`）。
+
+<details>
+<summary><strong>展开查看 Docker 进阶说明（MCP 配置 / 常用操作 / 故障排除）</strong></summary>
+
+### MCP 客户端配置（远程 SSE）
+
+Docker 部署后，AI 客户端可以通过 SSE 端点连接到 Nocturne Memory。如果你在 `.env` 中启用了 `API_TOKEN`，所有 API 和 SSE 请求都需要携带 Bearer Token 进行鉴权。
+
+```json
+{
+  "mcpServers": {
+    "nocturne_memory": {
+      "url": "http://<your-server-ip>:<NGINX_PORT>/sse",
+      "headers": {
+        "Authorization": "Bearer <your-api-token>"
+      }
+    }
+  }
+}
+```
+
+将 `<your-server-ip>` 替换为你的服务器 IP 或域名，`<NGINX_PORT>` 替换为 `.env` 中配置的端口（默认 `80`），`<your-api-token>` 替换为 `.env` 中的 `API_TOKEN` 值。
+
+> ⚠️ 若启用了 `API_TOKEN`，除 `/health` 健康检查端点外（用于 Docker 容器健康检查），其他所有 `/api/` 和 `/sse` 端点均需要 `Authorization: Bearer <token>` 请求头。
+
+### 常用操作
+
+```bash
+# 查看所有服务日志
+docker compose logs -f
+
+# 查看特定服务日志（postgres / backend-api / backend-sse / nginx）
+docker compose logs -f backend-api
+
+# 重启特定服务
+docker compose restart backend-sse
+
+# 停止所有服务
+docker compose down
+
+# 停止并删除数据卷（⚠️ 会清除所有数据！）
+docker compose down -v
+```
+
+### 故障排除
+
+| 问题 | 排查方法 |
+|------|----------|
+| 容器无法启动 | 运行 `docker compose logs <service>` 查看具体错误信息 |
+| `401 Unauthorized` 错误 | 检查 `.env` 中的 `API_TOKEN` 是否与客户端配置的 Bearer Token 一致 |
+| 数据库连接失败 | 检查 PostgreSQL 容器是否通过健康检查：`docker compose ps` |
+| SSE 连接超时 | 检查 Nginx 代理配置，确认 `backend-sse` 服务运行正常 |
+| 端口被占用 | 修改 `.env` 中的 `NGINX_PORT` 为其他可用端口 |
+
+</details>
+
+---
+
 ## 📋 System Prompt（系统提示词推荐）
 
 为了让 AI 正确使用记忆系统，建议在你的 System Prompt 中加入以下指令。

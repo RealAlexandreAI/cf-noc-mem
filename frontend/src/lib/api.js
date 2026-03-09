@@ -1,8 +1,33 @@
 import axios from 'axios';
 
+// 自定义事件：当收到 401 响应时触发，通知 App 切换到认证界面
+export const AUTH_ERROR_EVENT = 'nocturne:auth-error';
+
 const api = axios.create({
   baseURL: '/api'
 });
+
+// 请求拦截器：自动附加 Bearer Token
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('api_token');
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// 响应拦截器：401 时清除 token 并触发重新认证
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      localStorage.removeItem('api_token');
+      window.dispatchEvent(new CustomEvent(AUTH_ERROR_EVENT));
+    }
+    return Promise.reject(error);
+  }
+);
 
 const encodeId = (id) => encodeURIComponent(id);
 
@@ -22,3 +47,10 @@ export const approveGroup = (nodeUuid) =>
 
 export const clearAll = () =>
   api.delete('/review').then(res => res.data);
+
+// ============ Browse API ============
+
+export const getDomains = () =>
+  api.get('/browse/domains').then(res => res.data);
+
+export default api;

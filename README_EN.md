@@ -328,6 +328,103 @@ The project ships with `demo.db`, which contains pre-configured example memories
 
 ---
 
+## 🐳 Docker Deployment
+
+In addition to the local Python installation, you can deploy the full Nocturne Memory service stack with Docker Compose (PostgreSQL + Backend API + SSE Server + Nginx reverse proxy).
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) 24.0+
+- [Docker Compose](https://docs.docker.com/compose/install/) v2+
+
+### Quick Start
+
+1. **Clone the project**
+   ```bash
+   git clone https://github.com/Dataojitori/nocturne_memory.git
+   cd nocturne_memory
+   ```
+
+2. **Copy the environment configuration file**
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Edit the `.env` configuration file**
+   - **For Docker deployment**: you MUST uncomment all variables under `Docker Compose Configuration` (`POSTGRES_*` and `NGINX_PORT`).
+   - **To enable password protection** (recommended for public deployment): uncomment and change the `API_TOKEN` variable.
+   - **For local single-user mode in Docker**: leave `API_TOKEN` commented out. The system will run without authentication.
+   ```bash
+   nano .env  # or your preferred editor
+   ```
+
+4. **Build and start all services**
+   ```bash
+   docker compose up -d --build
+   ```
+
+5. **Open the management dashboard**
+   Visit `http://localhost` (or `http://localhost:<NGINX_PORT>`)
+
+> 💡 On first launch, `backend-api` automatically initializes the database schema (via SQLAlchemy `create_all`).
+
+<details>
+<summary><strong>Click to expand Docker advanced notes (MCP config / common operations / troubleshooting)</strong></summary>
+
+### MCP Client Configuration (Remote SSE)
+
+After Docker deployment, AI clients can connect to Nocturne Memory via the SSE endpoint. If you enabled `API_TOKEN` in your `.env`, all API and SSE requests will require Bearer Token authentication.
+
+```json
+{
+  "mcpServers": {
+    "nocturne_memory": {
+      "url": "http://<your-server-ip>:<NGINX_PORT>/sse",
+      "headers": {
+        "Authorization": "Bearer <your-api-token>"
+      }
+    }
+  }
+}
+```
+
+Replace `<your-server-ip>` with your server's IP or domain name, `<NGINX_PORT>` with the port configured in `.env` (default `80`), and `<your-api-token>` with the `API_TOKEN` value from `.env`.
+
+> ⚠️ If `API_TOKEN` is enabled, the `/health` endpoint requires no authentication (used for Docker container health checks). All other `/api/` and `/sse` endpoints require the `Authorization: Bearer <token>` header.
+
+### Common Operations
+
+```bash
+# View all service logs
+docker compose logs -f
+
+# View logs for a specific service (postgres / backend-api / backend-sse / nginx)
+docker compose logs -f backend-api
+
+# Restart a specific service
+docker compose restart backend-sse
+
+# Stop all services
+docker compose down
+
+# Stop and remove data volumes (⚠️ this deletes all data!)
+docker compose down -v
+```
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Container won't start | Run `docker compose logs <service>` to check error details |
+| `401 Unauthorized` error | Verify the `API_TOKEN` in `.env` matches the Bearer Token in your client config |
+| Database connection failed | Check if the PostgreSQL container passes health checks: `docker compose ps` |
+| SSE connection timeout | Check Nginx proxy settings and confirm `backend-sse` is running |
+| Port already in use | Change `NGINX_PORT` in `.env` to another available port |
+
+</details>
+
+---
+
 ## 📋 Recommended System Prompt
 
 To ensure the AI uses the memory system correctly, it's recommended to include the following instructions in your System Prompt.

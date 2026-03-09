@@ -1,3 +1,5 @@
+# pyright: reportArgumentType=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportGeneralTypeIssues=false, reportOperatorIssue=false, reportReturnType=false
+
 """
 Database Client for Nocturne Memory System
 
@@ -233,13 +235,15 @@ class SQLiteClient:
                 connect_args["ssl"] = "require"
                 connect_args["statement_cache_size"] = 0
 
-            engine_kwargs.update({
-                "pool_size": 10,
-                "max_overflow": 20,
-                "pool_recycle": 3600,  # Recycle connections after 1 hour
-                "pool_pre_ping": True,  # Verify connections before using
-                "connect_args": connect_args,
-            })
+            engine_kwargs.update(
+                {
+                    "pool_size": 10,
+                    "max_overflow": 20,
+                    "pool_recycle": 3600,  # Recycle connections after 1 hour
+                    "pool_pre_ping": True,  # Verify connections before using
+                    "connect_args": connect_args,
+                }
+            )
 
         self.engine = create_async_engine(database_url, **engine_kwargs)
         self.async_session = async_sessionmaker(
@@ -261,11 +265,13 @@ class SQLiteClient:
         import sys as _sys
         import os as _os
 
-        project_root = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", ".."))
+        project_root = _os.path.abspath(
+            _os.path.join(_os.path.dirname(__file__), "..", "..")
+        )
         if project_root not in _sys.path:
             _sys.path.insert(0, project_root)
 
-        from backend.db.migrations.runner import run_migrations
+        from db.migrations.runner import run_migrations
 
         try:
             async with self.engine.begin() as conn:
@@ -372,9 +378,7 @@ class SQLiteClient:
                 "alias_count": alias_count,
             }
 
-    async def get_memory_by_node_uuid(
-        self, node_uuid: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_memory_by_node_uuid(self, node_uuid: str) -> Optional[Dict[str, Any]]:
         """Get the current active (non-deprecated) memory for a node."""
         async with self.session() as session:
             result = await session.execute(
@@ -451,8 +455,7 @@ class SQLiteClient:
                     .group_by(Edge.parent_uuid)
                 )
                 approx_children_count_map = {
-                    parent_uuid: count
-                    for parent_uuid, count in count_result.all()
+                    parent_uuid: count for parent_uuid, count in count_result.all()
                 }
 
             children = []
@@ -467,11 +470,11 @@ class SQLiteClient:
                 )
                 all_paths = path_result.scalars().all()
 
-                path_obj = self._pick_best_path(
-                    all_paths, context_domain, prefix
-                )
+                path_obj = self._pick_best_path(all_paths, context_domain, prefix)
 
-                approx_children_count = approx_children_count_map.get(edge.child_uuid, 0)
+                approx_children_count = approx_children_count_map.get(
+                    edge.child_uuid, 0
+                )
 
                 children.append(
                     {
@@ -521,15 +524,9 @@ class SQLiteClient:
     @staticmethod
     def _escape_like_literal(value: str) -> str:
         """Escape special chars in SQL LIKE patterns for literal matching."""
-        return (
-            value.replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-        )
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
-    async def get_all_paths(
-        self, domain: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    async def get_all_paths(self, domain: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Get all paths with their node/edge info.
         """
@@ -604,13 +601,9 @@ class SQLiteClient:
     # Single-row / single-table. Takes session, never opens own transaction.
     # =========================================================================
 
-    async def _ensure_node(
-        self, session: AsyncSession, node_uuid: str
-    ) -> Node:
+    async def _ensure_node(self, session: AsyncSession, node_uuid: str) -> Node:
         """Create a node if it doesn't exist; return it either way."""
-        result = await session.execute(
-            select(Node).where(Node.uuid == node_uuid)
-        )
+        result = await session.execute(select(Node).where(Node.uuid == node_uuid))
         node = result.scalar_one_or_none()
         if node:
             return node
@@ -694,14 +687,10 @@ class SQLiteClient:
         path_obj, edge = row
         return path_obj, edge, edge.child_uuid
 
-    async def _count_paths_for_edge(
-        self, session: AsyncSession, edge_id: int
-    ) -> int:
+    async def _count_paths_for_edge(self, session: AsyncSession, edge_id: int) -> int:
         """Count how many path rows reference a given edge."""
         result = await session.execute(
-            select(func.count())
-            .select_from(Path)
-            .where(Path.edge_id == edge_id)
+            select(func.count()).select_from(Path).where(Path.edge_id == edge_id)
         )
         return result.scalar()
 
@@ -821,9 +810,7 @@ class SQLiteClient:
         if successor_id is not None:
             conditions.append(Memory.id != successor_id)
 
-        result = await session.execute(
-            select(Memory.id).where(and_(*conditions))
-        )
+        result = await session.execute(select(Memory.id).where(and_(*conditions)))
         ids = [row[0] for row in result.all()]
 
         if ids:
@@ -857,8 +844,7 @@ class SQLiteClient:
 
         if require_deprecated and not target.deprecated:
             raise PermissionError(
-                f"Memory {memory_id} is active "
-                f"(deprecated=False). Deletion aborted."
+                f"Memory {memory_id} is active (deprecated=False). Deletion aborted."
             )
 
         successor_id = target.migrated_to
@@ -868,9 +854,7 @@ class SQLiteClient:
             .values(migrated_to=successor_id)
         )
 
-        result = await session.execute(
-            delete(Memory).where(Memory.id == memory_id)
-        )
+        result = await session.execute(delete(Memory).where(Memory.id == memory_id))
         if result.rowcount == 0:
             raise ValueError(f"Memory ID {memory_id} not found")
 
@@ -1024,9 +1008,7 @@ class SQLiteClient:
         for mem in mem_result.scalars().all():
             collector.record("memories", self._serialize_row(mem))
 
-        await session.execute(
-            delete(Memory).where(Memory.node_uuid == node_uuid)
-        )
+        await session.execute(delete(Memory).where(Memory.node_uuid == node_uuid))
         node_row = await session.execute(select(Node).where(Node.uuid == node_uuid))
         node = node_row.scalar_one_or_none()
         if node:
@@ -1107,9 +1089,7 @@ class SQLiteClient:
             select(Edge).where(Edge.child_uuid == node_uuid)
         )
         for edge in incoming.scalars().all():
-            await self._gc_edge_if_pathless(
-                session, edge, collector=collector
-            )
+            await self._gc_edge_if_pathless(session, edge, collector=collector)
 
         outgoing = await session.execute(
             select(Edge).where(Edge.parent_uuid == node_uuid)
@@ -1164,9 +1144,7 @@ class SQLiteClient:
             if not parent_path:
                 parent_uuid = ROOT_NODE_UUID
             else:
-                parent = await self._resolve_path(
-                    session, parent_path, domain
-                )
+                parent = await self._resolve_path(session, parent_path, domain)
                 if not parent:
                     raise ValueError(
                         f"Parent '{domain}://{parent_path}' does not exist. "
@@ -1194,8 +1172,14 @@ class SQLiteClient:
 
             edge_name = title if title else final_path.rsplit("/", 1)[-1]
             created = await self._create_edge_with_paths(
-                session, parent_uuid, new_uuid, edge_name,
-                domain, final_path, priority, disclosure,
+                session,
+                parent_uuid,
+                new_uuid,
+                edge_name,
+                domain,
+                final_path,
+                priority,
+                disclosure,
             )
 
             return {
@@ -1287,7 +1271,8 @@ class SQLiteClient:
                 )
                 new_memory_id = new_memory.id
                 await self._deprecate_node_memories(
-                    session, node_uuid,
+                    session,
+                    node_uuid,
                     successor_id=new_memory_id,
                 )
                 await session.execute(
@@ -1301,8 +1286,7 @@ class SQLiteClient:
                     select(Memory).where(Memory.id.in_([old_id, new_memory_id]))
                 )
                 rows_after["memories"] = [
-                    self._serialize_memory_ref(m)
-                    for m in updated.scalars().all()
+                    self._serialize_memory_ref(m) for m in updated.scalars().all()
                 ]
 
             if content is None:
@@ -1319,7 +1303,9 @@ class SQLiteClient:
                 "rows_after": rows_after,
             }
 
-    async def rollback_to_memory(self, target_memory_id: int, session: Optional[AsyncSession] = None) -> Dict[str, Any]:
+    async def rollback_to_memory(
+        self, target_memory_id: int, session: Optional[AsyncSession] = None
+    ) -> Dict[str, Any]:
         """Inverse of _deprecate_node_memories: restore a deprecated memory
         as the active version, deprecating whatever is currently active."""
         async with self._optional_session(session) as session:
@@ -1331,10 +1317,14 @@ class SQLiteClient:
                 raise ValueError(f"Memory ID {target_memory_id} not found")
 
             if not target_memory.deprecated:
-                return {"restored_memory_id": target_memory_id, "was_already_active": True}
+                return {
+                    "restored_memory_id": target_memory_id,
+                    "was_already_active": True,
+                }
 
             await self._deprecate_node_memories(
-                session, target_memory.node_uuid,
+                session,
+                target_memory.node_uuid,
                 successor_id=target_memory_id,
             )
 
@@ -1344,7 +1334,10 @@ class SQLiteClient:
                 .values(deprecated=False, migrated_to=None)
             )
 
-            return {"restored_memory_id": target_memory_id, "node_uuid": target_memory.node_uuid}
+            return {
+                "restored_memory_id": target_memory_id,
+                "node_uuid": target_memory.node_uuid,
+            }
 
     async def add_path(
         self,
@@ -1361,9 +1354,7 @@ class SQLiteClient:
         Also cascades: automatically creates sub-paths for all descendants.
         """
         async with self.session() as session:
-            target = await self._resolve_path(
-                session, target_path, target_domain
-            )
+            target = await self._resolve_path(session, target_path, target_domain)
             if not target:
                 raise ValueError(
                     f"Target path '{target_domain}://{target_path}' not found"
@@ -1372,9 +1363,7 @@ class SQLiteClient:
 
             if "/" in new_path:
                 parent_path = new_path.rsplit("/", 1)[0]
-                parent = await self._resolve_path(
-                    session, parent_path, new_domain
-                )
+                parent = await self._resolve_path(session, parent_path, new_domain)
                 if not parent:
                     raise ValueError(
                         f"Parent '{new_domain}://{parent_path}' does not exist. "
@@ -1385,8 +1374,7 @@ class SQLiteClient:
                 parent_uuid = ROOT_NODE_UUID
 
             existing = await session.execute(
-                select(Path)
-                .where(Path.domain == new_domain, Path.path == new_path)
+                select(Path).where(Path.domain == new_domain, Path.path == new_path)
             )
             if existing.scalar_one_or_none():
                 raise ValueError(f"Path '{new_domain}://{new_path}' already exists")
@@ -1396,13 +1384,9 @@ class SQLiteClient:
             before_subtree = await self._get_subtree_path_rows(
                 session, new_domain, new_path
             )
-            before_path_keys = {
-                (row["domain"], row["path"]) for row in before_subtree
-            }
+            before_path_keys = {(row["domain"], row["path"]) for row in before_subtree}
 
-            if await self._would_create_cycle(
-                session, parent_uuid, target_node_uuid
-            ):
+            if await self._would_create_cycle(session, parent_uuid, target_node_uuid):
                 raise ValueError(
                     f"Cannot create alias '{new_domain}://{new_path}': "
                     f"target node is an ancestor of the destination parent, "
@@ -1410,9 +1394,14 @@ class SQLiteClient:
                 )
 
             result = await self._create_edge_with_paths(
-                session, parent_uuid, target_node_uuid,
-                new_path.rsplit("/", 1)[-1], new_domain, new_path,
-                priority, disclosure,
+                session,
+                parent_uuid,
+                target_node_uuid,
+                new_path.rsplit("/", 1)[-1],
+                new_domain,
+                new_path,
+                priority,
+                disclosure,
             )
             await session.flush()
 
@@ -1484,8 +1473,7 @@ class SQLiteClient:
 
             if would_orphan:
                 details = ", ".join(
-                    f"'{e.name}' (node: {e.child_uuid[:8]}...)"
-                    for e in would_orphan
+                    f"'{e.name}' (node: {e.child_uuid[:8]}...)" for e in would_orphan
                 )
                 raise ValueError(
                     f"Cannot remove '{domain}://{path}': "
@@ -1496,19 +1484,13 @@ class SQLiteClient:
                 )
 
             collector = ChangeCollector()
-            await self._delete_subtree_paths(
-                session, domain, path, collector=collector
-            )
+            await self._delete_subtree_paths(session, domain, path, collector=collector)
             await session.flush()
 
             # GC: edge + node cleanup (collector records deleted edges/memories)
-            await self._gc_edge_if_pathless(
-                session, target_edge, collector=collector
-            )
+            await self._gc_edge_if_pathless(session, target_edge, collector=collector)
 
-            await self._gc_node_soft(
-                session, target_node_uuid, collector=collector
-            )
+            await self._gc_node_soft(session, target_node_uuid, collector=collector)
 
             return {
                 "rows_before": collector.to_dict(),
@@ -1539,8 +1521,9 @@ class SQLiteClient:
                 raise ValueError(f"Node '{node_uuid}' not found")
 
             active_mem = await session.execute(
-                select(Memory)
-                .where(Memory.node_uuid == node_uuid, Memory.deprecated == False)
+                select(Memory).where(
+                    Memory.node_uuid == node_uuid, Memory.deprecated == False
+                )
             )
             if not active_mem.scalar_one_or_none():
                 latest = await session.execute(
@@ -1551,9 +1534,7 @@ class SQLiteClient:
                 )
                 latest_mem = latest.scalar_one_or_none()
                 if not latest_mem:
-                    raise ValueError(
-                        f"Node '{node_uuid}' has no memory versions"
-                    )
+                    raise ValueError(f"Node '{node_uuid}' has no memory versions")
                 await session.execute(
                     update(Memory)
                     .where(Memory.id == latest_mem.id)
@@ -1569,9 +1550,7 @@ class SQLiteClient:
             if parent_uuid is None:
                 if "/" in path:
                     parent_path_str = path.rsplit("/", 1)[0]
-                    parent = await self._resolve_path(
-                        session, parent_path_str, domain
-                    )
+                    parent = await self._resolve_path(session, parent_path_str, domain)
                     if parent:
                         _, _, parent_uuid = parent
                     else:
@@ -1761,9 +1740,7 @@ class SQLiteClient:
                     if len(m.content) > 200
                     else m.content,
                     "migrated_to": m.migrated_to,
-                    "created_at": m.created_at.isoformat()
-                    if m.created_at
-                    else None,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
                 }
                 for m in result.scalars().all()
             ]
@@ -1896,9 +1873,7 @@ class SQLiteClient:
 
             return detail
 
-    async def permanently_delete_memory(
-        self, memory_id: int
-    ) -> Dict[str, Any]:
+    async def permanently_delete_memory(self, memory_id: int) -> Dict[str, Any]:
         """
         Permanently delete a memory version (human only).
 
