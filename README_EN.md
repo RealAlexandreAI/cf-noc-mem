@@ -339,34 +339,41 @@ In addition to the local Python installation, you can deploy the full Nocturne M
 
 ### Quick Start
 
-```bash
-# 1. Clone the project
-git clone https://github.com/Dataojitori/nocturne_memory.git
-cd nocturne_memory
+1. **Clone the project**
+   ```bash
+   git clone https://github.com/Dataojitori/nocturne_memory.git
+   cd nocturne_memory
+   ```
 
-# 2. Copy the environment configuration file
-cp .env.example .env
+2. **Copy the environment configuration file**
+   ```bash
+   cp .env.example .env
+   ```
 
-# 3. Edit .env — change passwords and tokens (do NOT use the defaults!)
-#    - POSTGRES_PASSWORD: database password
-#    - API_TOKEN: API access token (used for SSE and API authentication)
-nano .env  # or your preferred editor
+3. **Edit the `.env` configuration file**
+   - **For Docker deployment**: you MUST uncomment all variables under `Docker Compose Configuration` (`POSTGRES_*` and `NGINX_PORT`).
+   - **To enable password protection** (recommended for public deployment): uncomment and change the `API_TOKEN` variable.
+   - **For local single-user mode in Docker**: leave `API_TOKEN` commented out. The system will run without authentication.
+   ```bash
+   nano .env  # or your preferred editor
+   ```
 
-# 4. Build and start all services
-docker compose up -d --build
+4. **Build and start all services**
+   ```bash
+   docker compose up -d --build
+   ```
 
-# 5. Open the management dashboard
-#    Visit http://localhost (or http://localhost:<NGINX_PORT>)
-```
+5. **Open the management dashboard**
+   Visit `http://localhost` (or `http://localhost:<NGINX_PORT>`)
 
 > 💡 On first launch, `backend-api` automatically initializes the database schema (via SQLAlchemy `create_all`).
 
+<details>
+<summary><strong>Click to expand Docker advanced notes (MCP config / common operations / troubleshooting)</strong></summary>
+
 ### MCP Client Configuration (Remote SSE)
 
-After Docker deployment, AI clients connect to Nocturne Memory via the SSE endpoint. All API and SSE requests require Bearer Token authentication.
-
-<details>
-<summary><strong>Cline / Claude Desktop / Other SSE Client Configuration</strong></summary>
+After Docker deployment, AI clients can connect to Nocturne Memory via the SSE endpoint. If you enabled `API_TOKEN` in your `.env`, all API and SSE requests will require Bearer Token authentication.
 
 ```json
 {
@@ -383,24 +390,7 @@ After Docker deployment, AI clients connect to Nocturne Memory via the SSE endpo
 
 Replace `<your-server-ip>` with your server's IP or domain name, `<NGINX_PORT>` with the port configured in `.env` (default `80`), and `<your-api-token>` with the `API_TOKEN` value from `.env`.
 
-</details>
-
-> ⚠️ The `/health` endpoint requires no authentication (used for Docker container health checks). All other `/api/` and `/sse` endpoints require the `Authorization: Bearer <token>` header.
-
-### Environment Variables
-
-All variables are configured in the `.env` file (see `.env.example`):
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | Database connection URL (SQLite for local use; automatically overridden by docker-compose.yml to PostgreSQL in Docker) | `sqlite+aiosqlite:///{PROJECT_ROOT}/demo.db` |
-| `VALID_DOMAINS` | Available memory domain namespaces (comma-separated) | `core,writer,game,notes` |
-| `CORE_MEMORY_URIS` | Core memory URIs auto-loaded at AI startup (comma-separated) | `core://agent,core://my_user,core://agent/my_user` |
-| `POSTGRES_DB` | PostgreSQL database name | `nocturne_memory` |
-| `POSTGRES_USER` | PostgreSQL username | `nocturne` |
-| `POSTGRES_PASSWORD` | PostgreSQL password (**change this!**) | `change_me_to_a_secure_password` |
-| `API_TOKEN` | API/SSE access token (**change this!**) | `change_me_to_a_secure_token` |
-| `NGINX_PORT` | Nginx external port | `80` |
+> ⚠️ If `API_TOKEN` is enabled, the `/health` endpoint requires no authentication (used for Docker container health checks). All other `/api/` and `/sse` endpoints require the `Authorization: Bearer <token>` header.
 
 ### Common Operations
 
@@ -430,6 +420,8 @@ docker compose down -v
 | Database connection failed | Check if the PostgreSQL container passes health checks: `docker compose ps` |
 | SSE connection timeout | Check Nginx proxy settings and confirm `backend-sse` is running |
 | Port already in use | Change `NGINX_PORT` in `.env` to another available port |
+
+</details>
 
 ---
 

@@ -41,13 +41,8 @@ def is_excluded_path(path: str, excluded_paths: Iterable[str] | None = None) -> 
     return False
 
 
-def get_api_token() -> str:
-    api_token = os.environ.get("API_TOKEN")
-    if not api_token:
-        raise RuntimeError(
-            "API_TOKEN environment variable is not set. Refusing to start without authentication token."
-        )
-    return api_token
+def get_api_token() -> str | None:
+    return os.environ.get("API_TOKEN")
 
 
 def _unauthorized_response() -> JSONResponse:
@@ -68,7 +63,11 @@ async def verify_token(
         校验失败时返回 401 JSONResponse，成功时返回 None。
     """
 
-    token = expected_token or get_api_token()
+    token = expected_token if expected_token is not None else get_api_token()
+    
+    # 如果没有设置 token，默认不进行验证
+    if not token:
+        return None
     authorization = request.headers.get("Authorization", "")
 
     if not authorization.startswith("Bearer "):
@@ -99,10 +98,14 @@ class BearerTokenAuthMiddleware:
     ) -> None:
         self.app = app
         self.excluded_paths = tuple(excluded_paths or ())
-        # 在中间件初始化时就校验配置，确保应用启动阶段即失败。
         self.expected_token = get_api_token()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        # 如果没有配置 Token，直接放行所有 HTTP 请求
+        if not self.expected_token:
+            await self.app(scope, receive, send)
+            return
+
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
             return
