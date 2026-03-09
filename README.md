@@ -413,9 +413,6 @@ docker compose logs -f backend-api
 # 重启特定服务
 docker compose restart backend-sse
 
-# 数据库备份
-docker compose exec postgres pg_dump -U nocturne nocturne_memory > backup_$(date +%Y%m%d).sql
-
 # 停止所有服务
 docker compose down
 

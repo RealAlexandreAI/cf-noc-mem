@@ -18,11 +18,8 @@ import {
   Link2,
   Star
 } from 'lucide-react';
-import axios from 'axios';
+import api from '../../lib/api';
 import clsx from 'clsx';
-
-// API Instance
-const api = axios.create({ baseURL: '/api' });
 
 // --- Helper ---
 const PriorityBadge = ({ priority, size = 'sm' }) => {

@@ -16,7 +16,7 @@ if _dotenv_path:
     load_dotenv(_dotenv_path)
 
 
-UNAUTHORIZED_MESSAGE = {"detail": "Invalid or missing token"}
+UNAUTHORIZED_MESSAGE = {"detail": "Unauthorized"}
 
 
 def _normalize_path(path: str) -> str:

@@ -414,9 +414,6 @@ docker compose logs -f backend-api
 # Restart a specific service
 docker compose restart backend-sse
 
-# Database backup
-docker compose exec postgres pg_dump -U nocturne nocturne_memory > backup_$(date +%Y%m%d).sql
-
 # Stop all services
 docker compose down
 
