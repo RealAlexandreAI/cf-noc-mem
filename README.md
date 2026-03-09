@@ -327,6 +327,114 @@ SSE Endpoint: `http://localhost:8000/sse`
 
 ---
 
+## 🐳 Docker 部署
+
+除了本地 Python 安装，你还可以通过 Docker Compose 一键部署完整的 Nocturne Memory 服务栈（PostgreSQL + Backend API + SSE Server + Nginx 反向代理）。
+
+### 前置要求
+
+- [Docker](https://docs.docker.com/get-docker/) 24.0+
+- [Docker Compose](https://docs.docker.com/compose/install/) v2+
+
+### 快速开始
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/Dataojitori/nocturne_memory.git
+cd nocturne_memory
+
+# 2. 复制环境变量配置文件
+cp .env.example .env
+
+# 3. 编辑 .env，修改密码和 Token（务必修改默认值！）
+#    - POSTGRES_PASSWORD: 数据库密码
+#    - API_TOKEN: API 访问令牌（用于 SSE 和 API 鉴权）
+nano .env  # 或使用你喜欢的编辑器
+
+# 4. 构建并启动所有服务
+docker compose up -d --build
+
+# 5. 访问管理界面
+#    打开 http://localhost（或 http://localhost:<NGINX_PORT>）
+```
+
+> 💡 首次启动时，`backend-api` 会自动初始化数据库表结构（通过 SQLAlchemy `create_all`）。
+
+### MCP 客户端配置（远程 SSE）
+
+Docker 部署后，AI 客户端通过 SSE 端点连接到 Nocturne Memory。所有 API 和 SSE 请求需要携带 Bearer Token 进行鉴权。
+
+<details>
+<summary><strong>Cline / Claude Desktop / 其他 SSE 客户端配置示例</strong></summary>
+
+```json
+{
+  "mcpServers": {
+    "nocturne_memory": {
+      "url": "http://<your-server-ip>:<NGINX_PORT>/sse",
+      "headers": {
+        "Authorization": "Bearer <your-api-token>"
+      }
+    }
+  }
+}
+```
+
+将 `<your-server-ip>` 替换为你的服务器 IP 或域名，`<NGINX_PORT>` 替换为 `.env` 中配置的端口（默认 `80`），`<your-api-token>` 替换为 `.env` 中的 `API_TOKEN` 值。
+
+</details>
+
+> ⚠️ `/health` 健康检查端点无需鉴权（用于 Docker 容器健康检查）。其他所有 `/api/` 和 `/sse` 端点均需要 `Authorization: Bearer <token>` 请求头。
+
+### 环境变量说明
+
+以下变量在 `.env` 文件中配置（参考 `.env.example`）：
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `DATABASE_URL` | 数据库连接 URL（本地使用 SQLite，Docker 部署时由 docker-compose.yml 自动覆盖为 PostgreSQL） | `sqlite+aiosqlite:///{PROJECT_ROOT}/demo.db` |
+| `VALID_DOMAINS` | 可用的记忆域命名空间（逗号分隔） | `core,writer,game,notes` |
+| `CORE_MEMORY_URIS` | AI 启动时自动加载的核心记忆 URI（逗号分隔） | `core://agent,core://my_user,core://agent/my_user` |
+| `POSTGRES_DB` | PostgreSQL 数据库名 | `nocturne_memory` |
+| `POSTGRES_USER` | PostgreSQL 用户名 | `nocturne` |
+| `POSTGRES_PASSWORD` | PostgreSQL 密码（**请务必修改！**） | `change_me_to_a_secure_password` |
+| `API_TOKEN` | API/SSE 访问令牌（**请务必修改！**） | `change_me_to_a_secure_token` |
+| `NGINX_PORT` | Nginx 对外暴露端口 | `80` |
+
+### 常用操作
+
+```bash
+# 查看所有服务日志
+docker compose logs -f
+
+# 查看特定服务日志（postgres / backend-api / backend-sse / nginx）
+docker compose logs -f backend-api
+
+# 重启特定服务
+docker compose restart backend-sse
+
+# 数据库备份
+docker compose exec postgres pg_dump -U nocturne nocturne_memory > backup_$(date +%Y%m%d).sql
+
+# 停止所有服务
+docker compose down
+
+# 停止并删除数据卷（⚠️ 会清除所有数据！）
+docker compose down -v
+```
+
+### 故障排除
+
+| 问题 | 排查方法 |
+|------|----------|
+| 容器无法启动 | 运行 `docker compose logs <service>` 查看具体错误信息 |
+| `401 Unauthorized` 错误 | 检查 `.env` 中的 `API_TOKEN` 是否与客户端配置的 Bearer Token 一致 |
+| 数据库连接失败 | 检查 PostgreSQL 容器是否通过健康检查：`docker compose ps` |
+| SSE 连接超时 | 检查 Nginx 代理配置，确认 `backend-sse` 服务运行正常 |
+| 端口被占用 | 修改 `.env` 中的 `NGINX_PORT` 为其他可用端口 |
+
+---
+
 ## 📋 System Prompt（系统提示词推荐）
 
 为了让 AI 正确使用记忆系统，建议在你的 System Prompt 中加入以下指令。
