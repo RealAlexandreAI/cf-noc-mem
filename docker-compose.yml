@@ -21,6 +21,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?ssl=disable
       API_TOKEN: ${API_TOKEN}
+      VALID_DOMAINS: ${VALID_DOMAINS}
+      CORE_MEMORY_URIS: ${CORE_MEMORY_URIS}
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,6 +41,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?ssl=disable
       API_TOKEN: ${API_TOKEN}
+      VALID_DOMAINS: ${VALID_DOMAINS}
+      CORE_MEMORY_URIS: ${CORE_MEMORY_URIS}
       SKIP_DB_INIT: "true"
       PORT: "8001"
       HOST: 0.0.0.0
