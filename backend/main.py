@@ -2,7 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from api import review_router, browse_router, maintenance_router
+from auth import BearerTokenAuthMiddleware
 from db import get_db_client, close_db_client
+from health import router as health_router
 
 
 @asynccontextmanager
@@ -10,7 +12,7 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时
     print("Memory API starting...")
-    
+
     # Initialize Database
     try:
         db_client = get_db_client()
@@ -18,9 +20,9 @@ async def lifespan(app: FastAPI):
         print("Database initialized.")
     except Exception as e:
         print(f"Failed to initialize database: {e}")
-    
+
     yield
-    
+
     # 关闭时
     print("Closing database connections...")
     await close_db_client()
@@ -30,7 +32,12 @@ app = FastAPI(
     title="Knowledge Graph API",
     description="AI长期记忆知识图谱后端",
     version="1.1.1",
-    lifespan=lifespan
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    BearerTokenAuthMiddleware,
+    excluded_paths=["/health"],
 )
 
 # CORS设置
@@ -43,6 +50,7 @@ app.add_middleware(
 )
 
 # 注册路由
+app.include_router(health_router)
 app.include_router(review_router)
 app.include_router(browse_router)
 app.include_router(maintenance_router)
@@ -51,19 +59,10 @@ app.include_router(maintenance_router)
 @app.get("/")
 async def root():
     """根路径"""
-    return {
-        "message": "Knowledge Graph API",
-        "version": "1.1.1",
-        "docs": "/docs"
-    }
-
-
-@app.get("/health")
-async def health():
-    """健康检查"""
-    return {"status": "ok"}
+    return {"message": "Knowledge Graph API", "version": "1.1.1", "docs": "/docs"}
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
