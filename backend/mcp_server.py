@@ -52,7 +52,7 @@ async def lifespan(server: FastMCP):
         # Initialize database ONLY after the MCP event loop has started.
         # This prevents "Event loop is closed" errors with asyncpg.
         db_client = get_db_client()
-        if not os.environ.get("SKIP_DB_INIT"):
+        if os.environ.get("SKIP_DB_INIT", "").lower() not in ("true", "1", "yes"):
             await db_client.init_db()
         yield
     finally:
