@@ -22,4 +22,8 @@ COPY . .
 RUN adduser --disabled-password --gecos '' appuser \
     && chown -R appuser:appuser /app
 
+# 预创建运行时目录，避免挂载卷后首次写入遇到权限问题
+RUN mkdir -p /app/snapshots /app/backups \
+    && chown appuser:appuser /app/snapshots /app/backups
+
 USER appuser

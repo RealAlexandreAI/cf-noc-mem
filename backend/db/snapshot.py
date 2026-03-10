@@ -16,10 +16,21 @@ from typing import Optional, Dict, Any, List
 from pathlib import Path
 
 
-DEFAULT_SNAPSHOT_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "snapshots",
-)
+def _default_snapshot_dir() -> str:
+    env_dir = os.environ.get("SNAPSHOT_DIR")
+    if env_dir:
+        return env_dir
+
+    # Local layout: <repo>/backend/db/snapshot.py -> snapshots under <repo>/snapshots
+    # Docker layout: /app/db/snapshot.py -> snapshots under /app/snapshots
+    db_dir = Path(__file__).resolve().parent
+    app_root = db_dir.parent.parent
+    if app_root.name == "backend":
+        app_root = app_root.parent
+    return str(app_root / "snapshots")
+
+
+DEFAULT_SNAPSHOT_DIR = _default_snapshot_dir()
 
 _CHANGESET_FILENAME = "changeset.json"
 
