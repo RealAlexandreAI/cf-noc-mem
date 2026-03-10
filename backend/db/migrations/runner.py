@@ -105,10 +105,10 @@ async def run_migrations(engine: AsyncEngine):
         
         # Dynamically import the migration module
         safe_stem = file[:-3].replace(".", "_")
-        module_name = f"backend.db.migrations.{safe_stem}"
+        module_name = f"db.migrations.{safe_stem}"
         spec = importlib.util.spec_from_file_location(module_name, os.path.join(migrations_dir, file))
         module = importlib.util.module_from_spec(spec)
-        module.__package__ = "backend.db.migrations"
+        module.__package__ = "db.migrations"
         spec.loader.exec_module(module)
         
         # Execute the migration
