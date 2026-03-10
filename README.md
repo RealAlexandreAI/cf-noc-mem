@@ -371,7 +371,7 @@ SSE Endpoint: `http://localhost:8000/sse`
 5. **访问管理界面**
    打开 `http://localhost`（或 `http://localhost:<NGINX_PORT>`）
 
-> 💡 首次启动时，`backend-api` 会自动初始化数据库表结构（通过 SQLAlchemy `create_all`）。
+> 💡 首次启动时，`backend-api` 会自动初始化数据库表结构（`create_all`），之后每次启动都会检查并执行 pending 的数据库迁移脚本（`db/migrations/`）。迁移前会自动备份数据库。
 
 <details>
 <summary><strong>展开查看 Docker 进阶说明（MCP 配置 / 常用操作 / 故障排除）</strong></summary>

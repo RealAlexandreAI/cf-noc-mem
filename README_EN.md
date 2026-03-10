@@ -372,7 +372,7 @@ In addition to the local Python installation, you can deploy the full Nocturne M
 5. **Open the management dashboard**
    Visit `http://localhost` (or `http://localhost:<NGINX_PORT>`)
 
-> 💡 On first launch, `backend-api` automatically initializes the database schema (via SQLAlchemy `create_all`).
+> 💡 On first launch, `backend-api` automatically initializes the database schema (`create_all`). On every launch, it also checks for and applies pending database migrations (`db/migrations/`). The database is automatically backed up before migrations are applied.
 
 <details>
 <summary><strong>Click to expand Docker advanced notes (MCP config / common operations / troubleshooting)</strong></summary>
