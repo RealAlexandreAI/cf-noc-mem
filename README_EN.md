@@ -373,10 +373,23 @@ In addition to the local Python installation, you can deploy the full Nocturne M
 <details>
 <summary><strong>Click to expand Docker advanced notes (MCP config / common operations / troubleshooting)</strong></summary>
 
-### MCP Client Configuration (Remote SSE)
+### MCP Client Configuration (Remote SSE / Streamable HTTP)
 
-After Docker deployment, AI clients can connect to Nocturne Memory via the SSE endpoint. If you enabled `API_TOKEN` in your `.env`, all API and SSE requests will require Bearer Token authentication.
+After Docker deployment, AI clients can connect to Nocturne Memory via the exposed endpoint. The specific endpoint path depends on the transport protocol supported by your client. If you enabled `API_TOKEN` in your `.env`, all API requests will require Bearer Token authentication.
 
+**1. Newer Clients (e.g., GitHub Copilot, config `type: "http"` supporting Streamable HTTP)**
+```json
+{
+  "mcpServers": {
+    "nocturne_memory": {
+      "url": "http://<your-server-ip>:<NGINX_PORT>/mcp",
+      "type": "http"
+    }
+  }
+}
+```
+
+**2. Legacy Clients (e.g., Claude Desktop, using standard SSE)**
 ```json
 {
   "mcpServers": {
@@ -392,7 +405,7 @@ After Docker deployment, AI clients can connect to Nocturne Memory via the SSE e
 
 Replace `<your-server-ip>` with your server's IP or domain name, `<NGINX_PORT>` with the port configured in `.env` (default `80`), and `<your-api-token>` with the `API_TOKEN` value from `.env`.
 
-> ⚠️ If `API_TOKEN` is enabled, the `/health` endpoint requires no authentication (used for Docker container health checks). All other `/api/` and `/sse` endpoints require the `Authorization: Bearer <token>` header.
+> ⚠️ If `API_TOKEN` is enabled, the `/health` endpoint requires no authentication (used for Docker container health checks). All other `/api/`, `/sse`, and `/mcp` endpoints require the `Authorization: Bearer <token>` header.
 
 ### Common Operations
 
