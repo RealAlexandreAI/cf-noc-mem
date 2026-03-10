@@ -19,13 +19,16 @@ services:
       context: ./backend
     command: uvicorn main:app --host 0.0.0.0 --port 8000
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
-      API_TOKEN: ${API_TOKEN}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?ssl=disable
+      API_TOKEN: ${API_TOKEN:-}
       VALID_DOMAINS: ${VALID_DOMAINS}
       CORE_MEMORY_URIS: ${CORE_MEMORY_URIS}
+      SNAPSHOT_DIR: /app/snapshots
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - snapshots_data:/app/snapshots
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s
@@ -39,16 +42,19 @@ services:
       context: ./backend
     command: python run_sse.py
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
-      API_TOKEN: ${API_TOKEN}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?ssl=disable
+      API_TOKEN: ${API_TOKEN:-}
       VALID_DOMAINS: ${VALID_DOMAINS}
       CORE_MEMORY_URIS: ${CORE_MEMORY_URIS}
+      SNAPSHOT_DIR: /app/snapshots
       SKIP_DB_INIT: "true"
       PORT: "8001"
       HOST: 0.0.0.0
     depends_on:
       backend-api:
         condition: service_healthy
+    volumes:
+      - snapshots_data:/app/snapshots
     restart: unless-stopped
 
   nginx:
@@ -65,3 +71,4 @@ services:
 
 volumes:
   postgres_data:
+  snapshots_data:

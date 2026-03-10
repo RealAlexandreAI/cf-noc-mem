@@ -73,6 +73,9 @@ async def run_migrations(engine: AsyncEngine):
             url_without_password = pg_url.set(password=None)
             safe_pg_url = url_without_password.render_as_string(hide_password=False)
             
+            # pg_dump strictly requires ?sslmode=disable, asyncpg requires ?ssl=disable
+            safe_pg_url = safe_pg_url.replace("ssl=disable", "sslmode=disable")
+            
             # Pass password securely via environment variable
             dump_env = os.environ.copy()
             if pg_url.password:
