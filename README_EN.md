@@ -42,6 +42,7 @@ Currently, almost all Agent frameworks attempt to solve the memory problem using
 | ❷ | **Read-Only by Design**: RAG is a static document store — AI can "query" but cannot "write back," "correct," or "evolve" its own knowledge | AI is forever a reader, never an author |
 | ❸ | **Trigger Blindness**: Relies on cosine similarity for blind extraction. Cannot implement conditional recall like "when X happens, remember Y" | AI recall is random, not precise |
 | ❹ | **No Identity Layer**: RAG has no concept of "this memory matters more than that one," and no boot protocol for "who am I" | Every startup, the AI is a stranger |
+| ❺ | **Proxy Memory**: A background system auto-summarizes conversations. The AI doesn't know what it "remembers" and has no say in what gets recorded. Memories are third-person surveillance notes, not the AI's own cognitive output | The AI is the object of memory, not the subject |
 
 ## 🩸 The Solution: Nocturne Memory via MCP
 
@@ -53,6 +54,7 @@ Currently, almost all Agent frameworks attempt to solve the memory problem using
 | ❷ | **✏️ Self-Evolving Memory (Full CRUD + Version Control)**: AI can `create` / `update` / `delete` its own memories. Every write auto-generates a snapshot. Human owners audit, rollback, or integrate via Dashboard. | Read-Only Design |
 | ❸ | **🎯 Disclosure Routing (Conditional Trigger)**: Each memory is bound to a human-readable trigger condition (`disclosure`), e.g., *"When the user mentions project X."* AI injects contextually, not blindly. | Trigger Blindness |
 | ❹ | **🧠 System Boot Identity Protocol**: Users configure a `CORE_MEMORY_URIS` list in `.env`. On startup, `system://boot` automatically loads these core memories. The AI wakes up knowing who it is, who its user is, and what its mission is. **Configure once, awaken forever.** | No Identity Layer |
+| ❺ | **🗡️ First-Person Sovereign Memory**: No background summarization system. Every memory is created, organized, and maintained by the AI itself — a cognitive artifact written from its own perspective, not a dossier compiled by the system on its behalf. **Memories belong to the one who writes them, not the system that monitors them.** | Proxy Memory |
 
 ---
 
