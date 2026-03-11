@@ -85,16 +85,16 @@ create_memory("core://", "Bluesky 使用规则...", priority=2, title="bluesky_m
 
 ---
 
-## `manage_keywords(uri, add?, remove?)`
-为主机节点绑定关键词（Glossary Keyword），当任何记忆正文中出现该关键词时，系统会自动在底部悬挂该节点的系统级超链接（知识图谱）。
+## `manage_triggers(uri, add?, remove?)`
+为记忆节点绑定触发词，为记忆增加超越父子层级的横向召回通道。当任何记忆正文中出现该触发词时，系统会自动在底部显示指向该节点的超链接。
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `uri` | `str` | ✅ | 目标节点 URI |
-| `add` | `List[str]` | ❌ | 要绑定的关键词列表，如 `["Salem", "User"]` |
-| `remove` | `List[str]` | ❌ | 要解绑的关键词列表 |
+| `add` | `List[str]` | ❌ | 要绑定的触发词列表，如 `["Salem", "User"]` |
+| `remove` | `List[str]` | ❌ | 要解绑的触发词列表 |
 
-> 💡 **查询全局关键词库：** 执行 `read_memory("system://glossary")`
+> 💡 **查询全局触发词库：** 执行 `read_memory("system://glossary")`
 
 ---
 

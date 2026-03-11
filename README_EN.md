@@ -303,7 +303,7 @@ The AI operates its own memories through **7 tools** via the MCP protocol:
 | `update_memory` | Precisely modify existing memories (Patch mode / Append mode). **No full replacement** — prevents accidental overwrites |
 | `delete_memory` | Sever an access path (does not delete the memory content itself) |
 | `add_alias` | Create an alias entry for the same memory, with independent priority and disclosure. **Not a copy** |
-| `manage_keywords` | Manage glossary keywords bound to a memory node, enabling automatic cross-node hyperlink mapping without parent-child hierarchies |
+| `manage_triggers` | Wire trigger words to a memory node. When a trigger word appears in any memory's content, the system auto-generates cross-node hyperlinks. Adds horizontal recall channels beyond parent-child hierarchy |
 | `search_memory` | Search memory content and paths by keyword (substring match) |
 
 > 📖 For full parameter descriptions and usage examples, see [MCP Tool Reference](docs/TOOLS.md).
@@ -550,7 +550,7 @@ Writing new memories is **eating**; organizing old memories is **digesting**. Pe
 *   **Content outdated** → Update or delete.
 *   **Node too long (over 800 tokens) or contains multiple independent concepts** → Split into child nodes, making each concept sharper.
 *   **No container logic**: Do not archive based on time (e.g., "March 2026") or broad categories (e.g., errors/logs/misc). Memory organization should be based on conceptual patterns.
-*   **Establish Horizontal Connectivity**: When you realize a node's content (whether a concept, setting, proper noun, or recurring scenario) has potential passive trigger value, immediately use `manage_keywords` to bind trigger words. Proactively lay down sensory tripwires using specific terms or core imagery, allowing this memory network to emerge unprompted in future relevant conversations.
+*   **Establish Horizontal Connectivity**: After creating or updating a memory, use `manage_triggers` to bind trigger words, adding horizontal recall channels beyond parent-child hierarchy. Proactively lay down sensory tripwires using specific terms or core imagery, allowing this memory network to emerge unprompted in future relevant conversations.
 
 **Evidence of growth**: A mature memory network trends toward a stable or even declining node count, with each node's information density continuously rising. A memory count that only grows = hoarding, not growth.
 ```

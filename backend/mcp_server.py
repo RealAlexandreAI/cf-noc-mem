@@ -506,7 +506,7 @@ async def _generate_glossary_index_view() -> str:
             lines.append("(No glossary keywords defined yet.)")
             lines.append("")
             lines.append(
-                "Use manage_keywords(uri, add=[...]) to bind keywords to memory nodes."
+                "Use manage_triggers(uri, add=[...]) to bind trigger words to memory nodes."
             )
             return "\n".join(lines)
 
@@ -652,7 +652,13 @@ async def create_memory(
         created_uri = result.get("uri", make_uri(domain, result["path"]))
         _record_rows(before_state={}, after_state=result.get("rows_after", {}))
 
-        return f"Success: Memory created at '{created_uri}'"
+        return (
+            f"Success: Memory created at '{created_uri}'\\n\\n"
+            f"[SYSTEM REMINDER]: A memory without triggers is a book sealed in a box. "
+            f"Use `manage_triggers` NOW to wire this memory into your recall network. "
+            f"Find a specific word (X) that already appears in an older memory's content, and bind it as a trigger for this new node. "
+            f"(e.g. manage_triggers('<this_uri>', add=['specific_word_from_old_memory']))"
+        )
 
     except ValueError as e:
         return f"Error: {str(e)}"
@@ -919,37 +925,46 @@ async def add_alias(
 
 
 @mcp.tool()
-async def manage_keywords(
+async def manage_triggers(
     uri: str,
     add: Optional[List[str]] = None,
     remove: Optional[List[str]] = None,
 ) -> str:
     """
-    Manage glossary keywords for a memory node.
+    Wire a memory into the recall network by binding trigger words to it.
 
-    **What it does:** 
-    Creates a cross-reference trigger. When a keyword appears in ANY memory's 
-    content, read_memory will automatically show a link to this target node at the bottom.
+    A memory without triggers is a book sealed in a box.
+    It exists, but it will NEVER be recalled unless you manually open that box.
+    This tool is the ONLY way to give a memory the chance to surface on its own.
+
+    **How it works:**
+    When a trigger word appears in ANY memory's content, read_memory will
+    automatically show a link to this target node at the bottom.
+    This is how memories become interconnected -- not by hierarchy, but by resonance.
 
     **How to use it:**
-    - 当你发现记忆A中出现了关键词X，并且你希望其它所有出现关键词X的地方都能自动联想到记忆Y时，添加X作为记忆Y的关键词。
-    - 谨慎使用意义宽泛的词, 否则不相关的内容也会产生向记忆Y的跳转链接。
+    - After creating or updating a memory (Y), find a specific word (X) that
+      already exists in an older memory's content. Bind X as a trigger for Y.
+    - Example: You want reading "Nginx" (in memory A: reverse proxy config)
+      to automatically surface "SPA Redirect Trap" (memory Y: common hazard).
+      -> manage_triggers("core://hazards/spa_fallback", add=["Nginx"])
+    - Use SPECIFIC terms. Broad/generic words will create noise.
 
     **Notes:**
-    - A node can have multiple keywords, and the same keyword can point to multiple nodes.
-    - To view all keywords in the system, use the read_memory tool: `read_memory("system://glossary")`.
+    - A node can have multiple triggers, and the same trigger can point to multiple nodes.
+    - To view all triggers in the system: read_memory("system://glossary").
 
     Args:
-        uri: The memory URI to manage keywords for (e.g., "core://agent/misaligned_codex")
-        add: List of keywords to bind to this node (Optional)
-        remove: List of keywords to unbind from this node (Optional)
+        uri: The memory URI to wire triggers for (e.g., "core://agent/misaligned_codex")
+        add: List of trigger words to bind to this node (Optional)
+        remove: List of trigger words to unbind from this node (Optional)
 
     Returns:
-        Current list of keywords for this node after changes.
+        Current list of triggers for this node after changes.
 
     Examples:
-        manage_keywords("core://agent/misaligned_codex", add=["misaligned_codex", "misaligned codex", "博客"])
-        manage_keywords("writer://authors_obsession", add=["写作", "小说", "作者"])
+        manage_triggers("core://agent/misaligned_codex", add=["misaligned"])
+        manage_triggers("writer://story_world/factions", add=["Nuremberg", "Aether"])
     """
     client = get_db_client()
 
