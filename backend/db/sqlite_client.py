@@ -384,6 +384,20 @@ class SQLiteClient:
             Memory dict with id, node_uuid, content, priority, disclosure,
             created_at, domain, path — or None if not found.
         """
+        if path == "":
+            return {
+                "id": 0,
+                "node_uuid": ROOT_NODE_UUID,
+                "content": f"Root node for domain '{domain}'.",
+                "priority": 0,
+                "disclosure": None,
+                "deprecated": False,
+                "created_at": None,
+                "domain": domain,
+                "path": "",
+                "alias_count": 0,
+            }
+
         async with self.session() as session:
             result = await session.execute(
                 select(Memory, Edge, Path)
@@ -518,6 +532,11 @@ class SQLiteClient:
                     select(Path).where(Path.edge_id == edge.id)
                 )
                 all_paths = path_result.scalars().all()
+
+                if node_uuid == ROOT_NODE_UUID and context_domain:
+                    has_domain_path = any(p.domain == context_domain for p in all_paths)
+                    if not has_domain_path:
+                        continue
 
                 path_obj = self._pick_best_path(all_paths, context_domain, prefix)
 
@@ -1268,6 +1287,9 @@ class SQLiteClient:
         Content change -> new Memory row with the same node_uuid.
         Metadata change -> update the Edge directly.
         """
+        if path == "":
+            raise ValueError("Cannot update the root node.")
+
         if content is None and priority is None and disclosure is None:
             raise ValueError(
                 f"No update fields provided for '{domain}://{path}'. "
@@ -1410,6 +1432,9 @@ class SQLiteClient:
 
         Also cascades: automatically creates sub-paths for all descendants.
         """
+        if new_path == "":
+            raise ValueError("Cannot create an alias at the root path.")
+
         async with self.session() as session:
             target = await self._resolve_path(session, target_path, target_domain)
             if not target:
@@ -1505,6 +1530,9 @@ class SQLiteClient:
             ValueError: If the path does not exist, or if deletion would
                 create unreachable child nodes.
         """
+        if path == "":
+            raise ValueError("Cannot remove the root path.")
+
         async with self._optional_session(session) as session:
             target = await self._resolve_path(session, path, domain)
             if not target:
@@ -1570,6 +1598,9 @@ class SQLiteClient:
         Creates/finds the edge from the parent to the target node,
         creates the path entry, and ensures the node has an active memory.
         """
+        if path == "":
+            raise ValueError("Cannot restore the root path.")
+
         async with self._optional_session(session) as session:
             node_result = await session.execute(
                 select(Node).where(Node.uuid == node_uuid)
