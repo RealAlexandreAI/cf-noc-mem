@@ -303,6 +303,7 @@ export default function MemoryBrowser() {
                                           key={node.node_uuid}
                                           content={node.content || ''}
                                           glossary={node.glossary_matches || []}
+                                          currentNodeUuid={node.node_uuid}
                                           onNavigate={navigateTo}
                                         />
                                     </div>

@@ -108,7 +108,7 @@ const GlossaryPopup = ({ keyword, nodes, position, onClose, onNavigate }) => {
   );
 };
 
-const GlossaryHighlighter = ({ content, glossary, onNavigate }) => {
+const GlossaryHighlighter = ({ content, glossary, currentNodeUuid, onNavigate }) => {
   const [popup, setPopup] = useState(null);
   const containerRef = useRef(null);
 
@@ -116,9 +116,17 @@ const GlossaryHighlighter = ({ content, glossary, onNavigate }) => {
     setPopup(null);
   }, [content]);
 
+  const filteredGlossary = useMemo(() => {
+    if (!glossary) return [];
+    return glossary.map(entry => {
+      const filteredNodes = entry.nodes?.filter(n => n.node_uuid !== currentNodeUuid) || [];
+      return { ...entry, nodes: filteredNodes };
+    }).filter(entry => entry.nodes.length > 0);
+  }, [glossary, currentNodeUuid]);
+
   const matches = useMemo(
-    () => findAllOccurrences(content, glossary),
-    [content, glossary]
+    () => findAllOccurrences(content, filteredGlossary),
+    [content, filteredGlossary]
   );
 
   const handleKeywordClick = useCallback((e, match) => {
