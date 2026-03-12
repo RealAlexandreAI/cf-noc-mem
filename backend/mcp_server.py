@@ -237,14 +237,23 @@ async def _fetch_and_format_memory(client, uri: str) -> str:
     try:
         glossary_matches = await client.find_glossary_in_content(content)
         if glossary_matches:
-            lines.append("=" * 60)
-            lines.append("")
-            lines.append("GLOSSARY (keywords detected in this content)")
-            lines.append("")
+            current_node_uuid = memory["node_uuid"]
+            
+            lines_to_add = []
             for kw, nodes in sorted(glossary_matches.items()):
-                uris = ", ".join(n["uri"] for n in nodes)
-                lines.append(f"- @{kw} -> {uris}")
-            lines.append("")
+                # Filter out the current memory itself from the glossary jumps
+                filtered_nodes = [n for n in nodes if n["node_uuid"] != current_node_uuid]
+                if filtered_nodes:
+                    uris = ", ".join(n["uri"] for n in filtered_nodes)
+                    lines_to_add.append(f"- @{kw} -> {uris}")
+            
+            if lines_to_add:
+                lines.append("=" * 60)
+                lines.append("")
+                lines.append("GLOSSARY (keywords detected in this content)")
+                lines.append("")
+                lines.extend(lines_to_add)
+                lines.append("")
     except Exception:
         pass  # Non-critical; don't break read_memory if glossary scan fails
 
