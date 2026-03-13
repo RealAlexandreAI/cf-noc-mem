@@ -42,6 +42,7 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base, relationship
 from dotenv import load_dotenv, find_dotenv
+from .search_terms import build_document_search_terms, expand_query_terms
 
 # Load environment variables
 _dotenv_path = find_dotenv(usecwd=True)
@@ -196,6 +197,7 @@ class SearchDocument(Base):
     uri = Column(Text, nullable=False)
     content = Column(Text, nullable=False)
     disclosure = Column(Text, nullable=True)
+    # Stores glossary keywords plus auxiliary CJK search terms.
     keywords_text = Column(Text, nullable=False, default="")
     priority = Column(Integer, nullable=False, default=0)
     updated_at = Column(DateTime, default=datetime.utcnow)
@@ -1707,8 +1709,7 @@ class SQLiteClient:
     @staticmethod
     def _normalize_search_query(query: str) -> str:
         """Normalize user input into token-friendly text for FTS parsers."""
-        normalized = re.sub(r"[:/.\-]+", " ", query).strip()
-        return re.sub(r"\s+", " ", normalized)
+        return expand_query_terms(query)
 
     @staticmethod
     def _to_sqlite_match_query(query: str) -> str:
@@ -1770,22 +1771,31 @@ class SQLiteClient:
             .where(GlossaryKeyword.node_uuid == node_uuid)
             .order_by(GlossaryKeyword.keyword)
         )
-        keywords_text = " ".join(row[0] for row in keyword_rows if row[0])
+        glossary_text = " ".join(row[0] for row in keyword_rows if row[0])
 
-        return [
-            {
-                "domain": row.domain,
-                "path": row.path,
-                "node_uuid": node_uuid,
-                "memory_id": memory.id,
-                "uri": f"{row.domain}://{row.path}",
-                "content": memory.content,
-                "disclosure": row.disclosure,
-                "keywords_text": keywords_text,
-                "priority": row.priority,
-            }
-            for row in path_rows
-        ]
+        documents = []
+        for row in path_rows:
+            uri = f"{row.domain}://{row.path}"
+            documents.append(
+                {
+                    "domain": row.domain,
+                    "path": row.path,
+                    "node_uuid": node_uuid,
+                    "memory_id": memory.id,
+                    "uri": uri,
+                    "content": memory.content,
+                    "disclosure": row.disclosure,
+                    "keywords_text": build_document_search_terms(
+                        row.path,
+                        uri,
+                        memory.content,
+                        row.disclosure,
+                        glossary_text,
+                    ),
+                    "priority": row.priority,
+                }
+            )
+        return documents
 
     async def _delete_search_documents_for_node(
         self, session: AsyncSession, node_uuid: str
