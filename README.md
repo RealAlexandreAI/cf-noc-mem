@@ -221,7 +221,13 @@ CORE_MEMORY_URIS=core://agent,core://my_user,core://agent/my_user
 ]
 ```
 
-### 4. 注入灵魂与唤醒 (Soul Injection & Awakening)
+### 4. 配置 System Prompt（必须配置）
+
+MCP 工具本身只是没有思想的接口，AI 需要明确的指令才知道**何时、如何**使用它们。
+请务必复制文档底部的 [System Prompt（系统提示词推荐）](#-system-prompt系统提示词推荐) 到你的 AI 客户端全局设定中（如 Claude 的 System Prompt 等）。
+**缺少这一步，AI 将无法养成主动查阅和记录记忆的习惯，MCP 工具形同虚设。**
+
+### 5. 注入灵魂与唤醒 (Soul Injection & Awakening)
 
 重启你的 AI 客户端，对它说：
 
@@ -447,6 +453,7 @@ docker compose down -v
 
 为了让 AI 正确使用记忆系统，建议在你的 System Prompt 中加入以下指令。
 完整版包含详细的读写规范和记忆整理协议，可以按需裁剪。
+另有一版更详细但并不是开箱即用的提示词可供参考：[`docs/system_prompt.md`](docs/system_prompt.md)。
 
 <details>
 <summary><strong>点击展开推荐 System Prompt</strong></summary>

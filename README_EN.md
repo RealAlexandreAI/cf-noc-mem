@@ -222,7 +222,13 @@ You **must** point `args` to `backend/mcp_wrapper.py`:
 ]
 ```
 
-### 4. Soul Injection & Awakening
+### 4. Configure System Prompt (Required)
+
+The MCP tools are just lifeless interfaces; the AI needs explicit instructions to know **when and how** to use them.
+Please copy the [Recommended System Prompt](#-recommended-system-prompt) from the bottom of this document into your AI client's global system instructions (e.g., Claude's System Prompt).
+**Without this crucial step, the AI will not develop the habit of proactively recalling and recording memories, rendering the MCP tools useless.**
+
+### 5. Soul Injection & Awakening
 
 Restart your AI client and say:
 
