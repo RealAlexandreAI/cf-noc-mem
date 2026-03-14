@@ -4,6 +4,7 @@ FROM python:3.12-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
+        libc6-dev \
         libpq-dev \
         postgresql-client \
         gcc \
