@@ -46,7 +46,8 @@ if _dotenv_path:
     load_dotenv(_dotenv_path)
 
 from db.neo4j_client import get_neo4j_client
-from db.sqlite_client import get_db_client, SQLiteClient
+from db import get_graph_service, get_db_manager, close_db
+from db.graph import GraphService
 
 
 class MigrationLogger:
@@ -123,7 +124,7 @@ class MigrationLogger:
 
 async def migrate_entity(
     neo4j_client,
-    sqlite_client: SQLiteClient,
+    sqlite_client: GraphService,
     entity_id: str,
     domain: str,
     logger: MigrationLogger
@@ -178,7 +179,7 @@ async def migrate_entity(
 
 async def migrate_relationship(
     neo4j_client,
-    sqlite_client: SQLiteClient,
+    sqlite_client: GraphService,
     viewer_id: str,
     target_id: str,
     domain: str,
@@ -227,7 +228,7 @@ async def migrate_relationship(
 
 async def migrate_chapter(
     neo4j_client,
-    sqlite_client: SQLiteClient,
+    sqlite_client: GraphService,
     viewer_id: str,
     target_id: str,
     chapter_name: str,
@@ -329,11 +330,11 @@ async def run_migration(domain: str = "core"):
         print(f"[ERROR] Failed to connect to Neo4j: {e}")
         return
     
-    sqlite_client = get_db_client()
+    sqlite_client = get_graph_service()
     
     # Initialize SQLite tables
     print("[3/6] Creating SQLite tables...")
-    await sqlite_client.init_db()
+    await get_db_manager().init_db()
     
     logger = MigrationLogger()
     
@@ -388,7 +389,7 @@ async def run_migration(domain: str = "core"):
     logger.save()
     
     # Cleanup
-    await sqlite_client.close()
+    await close_db()
     neo4j_client.close()
     
     print("\nMigration complete!")

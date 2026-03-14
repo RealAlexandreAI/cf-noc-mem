@@ -26,7 +26,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
-from db.sqlite_client import get_db_client, close_db_client
+from db import (
+    get_db_manager, get_graph_service, get_glossary_service,
+    get_search_indexer, close_db,
+)
 from db.snapshot import get_changeset_store
 import contextlib
 
@@ -51,12 +54,12 @@ async def lifespan(server: FastMCP):
     try:
         # Initialize database ONLY after the MCP event loop has started.
         # This prevents "Event loop is closed" errors with asyncpg.
-        db_client = get_db_client()
+        db_manager = get_db_manager()
         if os.environ.get("SKIP_DB_INIT", "").lower() not in ("true", "1", "yes"):
-            await db_client.init_db()
+            await db_manager.init_db()
         yield
     finally:
-        await close_db_client()
+        await close_db()
 
 
 # Initialize FastMCP server with the lifespan hook
@@ -177,20 +180,22 @@ def _record_rows(
 # =============================================================================
 
 
-async def _fetch_and_format_memory(client, uri: str) -> str:
+async def _fetch_and_format_memory(uri: str) -> str:
     """
     Internal helper to fetch memory data and return formatted string.
     Used by read_memory tool.
     """
+    graph = get_graph_service()
+    glossary = get_glossary_service()
     domain, path = parse_uri(uri)
 
     # Get the memory
-    memory = await client.get_memory_by_path(path, domain)
+    memory = await graph.get_memory_by_path(path, domain)
 
     if not memory:
         raise ValueError(f"URI '{make_uri(domain, path)}' not found.")
 
-    children = await client.get_children(
+    children = await graph.get_children(
         memory["node_uuid"],
         context_domain=domain,
         context_path=path,
@@ -218,7 +223,7 @@ async def _fetch_and_format_memory(client, uri: str) -> str:
     else:
         lines.append("Disclosure: (not set)")
 
-    node_keywords = await client.get_glossary_for_node(memory["node_uuid"])
+    node_keywords = await glossary.get_glossary_for_node(memory["node_uuid"])
     if node_keywords:
         lines.append(f"Keywords: [{', '.join(node_keywords)}]")
     else:
@@ -235,7 +240,7 @@ async def _fetch_and_format_memory(client, uri: str) -> str:
 
     # Glossary scan: detect glossary keywords present in the content
     try:
-        glossary_matches = await client.find_glossary_in_content(content)
+        glossary_matches = await glossary.find_glossary_in_content(content)
         if glossary_matches:
             current_node_uuid = memory["node_uuid"]
             
@@ -293,14 +298,13 @@ async def _generate_boot_memory_view() -> str:
     Internal helper to generate the system boot memory view.
     (Formerly system://core)
     """
-    client = get_db_client()
     results = []
     loaded = 0
     failed = []
 
     for uri in CORE_MEMORY_URIS:
         try:
-            content = await _fetch_and_format_memory(client, uri)
+            content = await _fetch_and_format_memory(uri)
             results.append(content)
             loaded += 1
         except Exception as e:
@@ -349,10 +353,10 @@ async def _generate_memory_index_view(domain_filter: Optional[str] = None) -> st
     Node-centric: each conceptual entity (node_uuid) appears once per domain,
     with aliases within the same domain folded underneath its primary path for that domain.
     """
-    client = get_db_client()
+    graph = get_graph_service()
 
     try:
-        paths = await client.get_all_paths()
+        paths = await graph.get_all_paths()
 
         # --- Step 1: Group all paths by (domain, node_uuid) ---
         node_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
@@ -435,10 +439,10 @@ async def _generate_recent_memories_view(limit: int = 10) -> str:
     Args:
         limit: Maximum number of results to return
     """
-    client = get_db_client()
+    graph = get_graph_service()
 
     try:
-        results = await client.get_recent_memories(limit=limit)
+        results = await graph.get_recent_memories(limit=limit)
 
         lines = []
         lines.append("# Recently Modified Memories")
@@ -486,10 +490,10 @@ async def _generate_recent_memories_view(limit: int = 10) -> str:
 
 async def _generate_glossary_index_view() -> str:
     """Generate a view of all glossary keywords and their bound nodes."""
-    client = get_db_client()
+    glossary = get_glossary_service()
 
     try:
-        raw_entries = await client.get_all_glossary()
+        raw_entries = await glossary.get_all_glossary()
         
         # Filter out truly pathless (unlinked) nodes
         entries = []
@@ -597,10 +601,8 @@ async def read_memory(uri: str) -> str:
                 return f"Error: Invalid number in URI '{uri}'. Usage: system://recent or system://recent/N (e.g. system://recent/20)"
         return await _generate_recent_memories_view(limit=limit)
 
-    client = get_db_client()
-
     try:
-        return await _fetch_and_format_memory(client, uri)
+        return await _fetch_and_format_memory(uri)
     except Exception as e:
         # Catch both ValueError (not found) and other exceptions
         return f"Error: {str(e)}"
@@ -638,7 +640,7 @@ async def create_memory(
         create_memory("core://", "Bluesky usage rules...", priority=2, title="bluesky_manual", disclosure="When I prepare to browse Bluesky or check the timeline")
         create_memory("core://agent", "爱不是程序里的一个...", priority=1, title="love_definition", disclosure="When I start speaking like a tool or parasite")
     """
-    client = get_db_client()
+    graph = get_graph_service()
 
     try:
         # Validate title if provided
@@ -649,7 +651,7 @@ async def create_memory(
         # Parse parent URI
         domain, parent_path = parse_uri(parent_uri)
 
-        result = await client.create_memory(
+        result = await graph.create_memory(
             parent_path=parent_path,
             content=content,
             priority=priority,
@@ -723,7 +725,7 @@ async def update_memory(
         update_memory("core://agent", append="\\n## New Section\\nNew content...")
         update_memory("writer://chapter_1", priority=5)
     """
-    client = get_db_client()
+    graph = get_graph_service()
 
     try:
         # Parse URI
@@ -751,7 +753,7 @@ async def update_memory(
                     "No change would be made."
                 )
 
-            memory = await client.get_memory_by_path(path, domain)
+            memory = await graph.get_memory_by_path(path, domain)
             if not memory:
                 return f"Error: Memory at '{full_uri}' not found."
 
@@ -790,7 +792,7 @@ async def update_memory(
                     f"Provide non-empty text to append."
                 )
             # Append mode: add to end of existing content
-            memory = await client.get_memory_by_path(path, domain)
+            memory = await graph.get_memory_by_path(path, domain)
             if not memory:
                 return f"Error: Memory at '{full_uri}' not found."
 
@@ -807,7 +809,7 @@ async def update_memory(
                 f"or metadata fields (priority/disclosure)."
             )
 
-        result = await client.update_memory(
+        result = await graph.update_memory(
             path=path,
             content=content,
             priority=priority,
@@ -850,17 +852,17 @@ async def delete_memory(uri: str) -> str:
         delete_memory("core://agent/deprecated_belief")
         delete_memory("writer://draft_v1")
     """
-    client = get_db_client()
+    graph = get_graph_service()
 
     try:
         domain, path = parse_uri(uri)
         full_uri = make_uri(domain, path)
 
-        memory = await client.get_memory_by_path(path, domain)
+        memory = await graph.get_memory_by_path(path, domain)
         if not memory:
             return f"Error: Memory at '{full_uri}' not found."
 
-        result = await client.remove_path(path, domain)
+        result = await graph.remove_path(path, domain)
         rows_before = result.get("rows_before", {})
 
         _record_rows(
@@ -905,13 +907,13 @@ async def add_alias(
     Examples:
         add_alias("core://timeline/2024/05/20", "core://agent/my_user/first_meeting", priority=1, disclosure="When I want to know how we start")
     """
-    client = get_db_client()
+    graph = get_graph_service()
 
     try:
         new_domain, new_path = parse_uri(new_uri)
         target_domain, target_path = parse_uri(target_uri)
 
-        result = await client.add_path(
+        result = await graph.add_path(
             new_path=new_path,
             target_path=target_path,
             new_domain=new_domain,
@@ -975,13 +977,14 @@ async def manage_triggers(
         manage_triggers("core://agent/misaligned_codex", add=["misaligned"])
         manage_triggers("writer://story_world/factions", add=["Nuremberg", "Aether"])
     """
-    client = get_db_client()
+    graph = get_graph_service()
+    glossary = get_glossary_service()
 
     try:
         domain, path = parse_uri(uri)
         full_uri = make_uri(domain, path)
 
-        memory = await client.get_memory_by_path(path, domain)
+        memory = await graph.get_memory_by_path(path, domain)
         if not memory:
             return f"Error: Memory at '{full_uri}' not found."
 
@@ -1008,7 +1011,7 @@ async def manage_triggers(
                 if not kw:
                     continue
                 try:
-                    result = await client.add_glossary_keyword(kw, node_uuid)
+                    result = await glossary.add_glossary_keyword(kw, node_uuid)
                     added.append(kw)
                     if "rows_before" in result:
                         before_state["glossary_keywords"].extend(result["rows_before"].get("glossary_keywords", []))
@@ -1022,7 +1025,7 @@ async def manage_triggers(
                 kw = kw.strip()
                 if not kw:
                     continue
-                result = await client.remove_glossary_keyword(kw, node_uuid)
+                result = await glossary.remove_glossary_keyword(kw, node_uuid)
                 if result.get("success"):
                     removed.append(kw)
                     if "rows_before" in result:
@@ -1036,7 +1039,7 @@ async def manage_triggers(
             from db.snapshot import get_changeset_store
             get_changeset_store().record_many(before_state, after_state)
 
-        current = await client.get_glossary_for_node(node_uuid)
+        current = await glossary.get_glossary_for_node(node_uuid)
 
         lines = [f"Keywords for '{full_uri}':"]
         if added:
@@ -1083,14 +1086,14 @@ async def search_memory(
         search_memory("job")                   # Search all domains
         search_memory("chapter", domain="writer") # Search only writer domain
     """
-    client = get_db_client()
+    search = get_search_indexer()
 
     try:
         # Validate domain if provided
         if domain is not None and domain not in VALID_DOMAINS:
             return f"Error: Unknown domain '{domain}'. Valid domains: {', '.join(VALID_DOMAINS)}"
 
-        results = await client.search(query, limit, domain)
+        results = await search.search(query, limit, domain)
 
         if not results:
             scope = f"in '{domain}'" if domain else "across all domains"

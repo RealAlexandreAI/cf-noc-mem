@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from db import get_db_client
+from db import get_db_manager
 
 
 router = APIRouter(tags=["health"])
@@ -15,8 +15,8 @@ async def health_check() -> JSONResponse:
     database_status = "disconnected"
 
     try:
-        client = get_db_client()
-        async with client.session() as session:
+        db = get_db_manager()
+        async with db.session() as session:
             await session.execute(text("SELECT 1"))
         database_status = "connected"
     except Exception:

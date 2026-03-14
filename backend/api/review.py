@@ -17,7 +17,7 @@ from models import (
 )
 from .utils import get_text_diff
 from db.snapshot import get_changeset_store, _make_row_key
-from db.sqlite_client import get_db_client
+from db import get_graph_service, get_search_indexer, get_db_manager
 
 router = APIRouter(prefix="/review", tags=["review"])
 
@@ -311,10 +311,10 @@ async def list_groups():
     # Bulk-resolve missing edge_ids to child_uuids via live DB
     db_edge_to_node = {}
     if edge_ids_to_resolve:
-        client = get_db_client()
+        db = get_db_manager()
         from sqlalchemy import select
-        from db.sqlite_client import Edge
-        async with client.session() as session:
+        from db.models import Edge
+        async with db.session() as session:
             res = await session.execute(select(Edge.id, Edge.child_uuid).where(Edge.id.in_(edge_ids_to_resolve)))
             for eid, child_uuid in res:
                 db_edge_to_node[eid] = child_uuid
@@ -357,10 +357,10 @@ async def list_groups():
         
         # If no path is in the changeset, find the primary URI from the live DB
         if not display_uri:
-            client = get_db_client()
+            db = get_db_manager()
             from sqlalchemy import select
-            from db.sqlite_client import Path as PathModel, Edge
-            async with client.session() as session:
+            from db.models import Path as PathModel, Edge
+            async with db.session() as session:
                 db_res = await session.execute(
                     select(PathModel.domain, PathModel.path)
                     .join(Edge, PathModel.edge_id == Edge.id)
@@ -416,14 +416,15 @@ async def _extract_content_and_meta_for_node(rows: List[Dict[str, Any]], slot: s
             meta["disclosure"] = data.get("disclosure")
 
     content = None
-    client = get_db_client()
+    graph = get_graph_service()
+    db = get_db_manager()
     
     node_created = any(r["table"] == "nodes" and r["before"] is None and (r.get("after") or {}).get("uuid") == node_uuid for r in rows)
     node_deleted = any(r["table"] == "nodes" and r["after"] is None and (r.get("before") or {}).get("uuid") == node_uuid for r in rows)
 
     if memory_id is not None:
         # If we found a memory pointer in the changeset, fetch its content from DB
-        mem = await client.get_memory_by_id(memory_id)
+        mem = await graph.get_memory_by_id(memory_id)
         if mem:
             content = mem.get("content")
     else:
@@ -443,8 +444,8 @@ async def _extract_content_and_meta_for_node(rows: List[Dict[str, Any]], slot: s
             
         if should_fetch_memory:
             from sqlalchemy import select
-            from db.sqlite_client import Memory
-            async with client.session() as session:
+            from db.models import Memory
+            async with db.session() as session:
                 mem = (await session.execute(
                     select(Memory).where(Memory.node_uuid == node_uuid, Memory.deprecated == False)
                 )).scalar_one_or_none()
@@ -465,8 +466,8 @@ async def _extract_content_and_meta_for_node(rows: List[Dict[str, Any]], slot: s
             
         if should_fetch_edge:
             from sqlalchemy import select
-            from db.sqlite_client import Edge
-            async with client.session() as session:
+            from db.models import Edge
+            async with db.session() as session:
                 edge = (await session.execute(select(Edge).where(Edge.child_uuid == node_uuid).limit(1))).scalar_one_or_none()
                 if edge:
                     meta["priority"] = edge.priority
@@ -489,9 +490,9 @@ async def get_group_diff(node_uuid: str):
     
     # Re-run the edge_id resolution cache for this request
     db_edge_to_node = {}
-    client = get_db_client()
+    db = get_db_manager()
     from sqlalchemy import select
-    from db.sqlite_client import Edge
+    from db.models import Edge
     
     edge_ids_to_resolve = set()
     for row in changed_rows:
@@ -501,7 +502,7 @@ async def get_group_diff(node_uuid: str):
                 edge_ids_to_resolve.add(ref["edge_id"])
     
     if edge_ids_to_resolve:
-        async with client.session() as session:
+        async with db.session() as session:
             res = await session.execute(select(Edge.id, Edge.child_uuid).where(Edge.id.in_(edge_ids_to_resolve)))
             for eid, child_uuid in res:
                 db_edge_to_node[eid] = child_uuid
@@ -566,8 +567,8 @@ async def get_group_diff(node_uuid: str):
     active_paths = []
     node_is_deleted = (top_table == "nodes" and action == "deleted")
     if not node_is_deleted:
-        from db.sqlite_client import Path as PathModel
-        async with client.session() as session:
+        from db.models import Path as PathModel
+        async with db.session() as session:
             db_res = await session.execute(
                 select(PathModel.domain, PathModel.path)
                 .join(Edge, PathModel.edge_id == Edge.id)
@@ -586,8 +587,8 @@ async def get_group_diff(node_uuid: str):
         node_deleted = any(r["table"] == "nodes" and r["after"] is None and (r.get("before") or {}).get("uuid") == node_uuid for r in rows)
         edge_deleted = any(r["table"] == "edges" and r["after"] is None and (r.get("before") or {}).get("child_uuid") == node_uuid for r in rows)
         
-        async with client.session() as session:
-            from db.sqlite_client import Memory
+        async with db.session() as session:
+            from db.models import Memory
             mem = (await session.execute(
                 select(Memory).where(Memory.node_uuid == node_uuid, Memory.deprecated == False)
             )).scalar_one_or_none()
@@ -636,9 +637,11 @@ async def rollback_group(node_uuid: str):
     changed_rows = store.get_changed_rows()
     
     db_edge_to_node = {}
-    client = get_db_client()
+    db = get_db_manager()
+    graph = get_graph_service()
+    search = get_search_indexer()
     from sqlalchemy import select, update, delete
-    from db.sqlite_client import Edge, GlossaryKeyword, Node
+    from db.models import Edge, GlossaryKeyword, Node
     
     # Resolve edge_ids for path tracing
     edge_ids_to_resolve = set()
@@ -649,7 +652,7 @@ async def rollback_group(node_uuid: str):
                 edge_ids_to_resolve.add(ref["edge_id"])
     
     if edge_ids_to_resolve:
-        async with client.session() as session:
+        async with db.session() as session:
             res = await session.execute(select(Edge.id, Edge.child_uuid).where(Edge.id.in_(edge_ids_to_resolve)))
             for eid, child_uuid in res:
                 db_edge_to_node[eid] = child_uuid
@@ -671,13 +674,13 @@ async def rollback_group(node_uuid: str):
     try:
         messages = []
         
-        async with client.session() as session:
+        async with db.session() as session:
             # 1. The Ultimate Rollback: Node Creation.
             # If the 'nodes' table has a row where 'before' is None, this node didn't exist before.
             # Therefore, rolling back means wiping out the entire node and its cascades.
             node_created = any(r["table"] == "nodes" and r["before"] is None for r in rows)
             if node_created:
-                await client._cascade_delete_node(session, node_uuid)
+                await graph.cascade_delete_node(session, node_uuid)
                 messages.append("Deleted created node and its dependencies.")
             else:
                 # Revert Path Changes by sorting lengths
@@ -690,7 +693,7 @@ async def rollback_group(node_uuid: str):
                 # 2a. Remove created paths
                 for r in path_creations:
                     try:
-                        await client.remove_path(r["after"]["path"], r["after"]["domain"], session=session)
+                        await graph.remove_path(r["after"]["path"], r["after"]["domain"], session=session)
                         messages.append(f"Removed path '{r['after']['path']}'.")
                     except ValueError as e:
                         if "not found" not in str(e):
@@ -723,7 +726,7 @@ async def rollback_group(node_uuid: str):
                                 
                     target_node_uuid = child_uuid or node_uuid
                                 
-                    await client.restore_path(
+                    await graph.restore_path(
                         path=r["before"]["path"],
                         domain=r["before"]["domain"],
                         node_uuid=target_node_uuid,
@@ -756,7 +759,7 @@ async def rollback_group(node_uuid: str):
                         try:
                             # rollback_to_memory automatically deprecates the current memory
                             # and un-deprecates the old one
-                            await client.rollback_to_memory(old_active_mem_id, session=session)
+                            await graph.rollback_to_memory(old_active_mem_id, session=session)
                             messages.append(f"Restored previous memory content ({old_active_mem_id}).")
                         except ValueError:
                             pass
@@ -804,7 +807,7 @@ async def rollback_group(node_uuid: str):
                             else:
                                 messages.append(f"Glossary keyword ('{b['keyword']}') already exists, skipped restore.")
 
-            await client.rebuild_search_documents(session=session)
+            await search.rebuild_search_documents(session=session)
 
         if not messages:
             messages.append("No rollback action required.")
@@ -840,9 +843,9 @@ async def approve_group(node_uuid: str):
     changed_rows = store.get_changed_rows()
     
     db_edge_to_node = {}
-    client = get_db_client()
+    db = get_db_manager()
     from sqlalchemy import select
-    from db.sqlite_client import Edge
+    from db.models import Edge
     
     edge_ids_to_resolve = set()
     for row in changed_rows:
@@ -852,7 +855,7 @@ async def approve_group(node_uuid: str):
                 edge_ids_to_resolve.add(ref["edge_id"])
     
     if edge_ids_to_resolve:
-        async with client.session() as session:
+        async with db.session() as session:
             res = await session.execute(select(Edge.id, Edge.child_uuid).where(Edge.id.in_(edge_ids_to_resolve)))
             for eid, child_uuid in res:
                 db_edge_to_node[eid] = child_uuid
@@ -886,17 +889,17 @@ async def clear_all():
 @router.get("/deprecated")
 async def list_deprecated_memories():
     """List memories that have been replaced by newer versions."""
-    client = get_db_client()
-    memories = await client.get_deprecated_memories()
+    graph = get_graph_service()
+    memories = await graph.get_deprecated_memories()
     return {"count": len(memories), "memories": memories}
 
 
 @router.delete("/memories/{memory_id}")
 async def permanently_delete_memory(memory_id: int):
     """Permanently purge a deprecated memory from the DB (manual GC)."""
-    client = get_db_client()
+    graph = get_graph_service()
     try:
-        await client.permanently_delete_memory(memory_id)
+        await graph.permanently_delete_memory(memory_id)
         return {"message": f"Memory {memory_id} permanently deleted"}
     except ValueError as e:
         raise HTTPException(404, str(e))

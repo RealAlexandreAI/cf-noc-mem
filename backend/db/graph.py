@@ -1,7 +1,7 @@
 # pyright: reportArgumentType=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportGeneralTypeIssues=false, reportOperatorIssue=false, reportReturnType=false
 
 """
-Database Client for Nocturne Memory System
+Graph Service for Nocturne Memory System
 
 Graph-based memory storage with:
 - Node: a conceptual entity (UUID), version-independent
@@ -9,26 +9,14 @@ Graph-based memory storage with:
 - Edge: parent→child relationship between nodes, carrying metadata
 - Path: materialized URI cache (domain://path → edge)
 
-Supports both SQLite (local, single-user) and PostgreSQL (remote, multi-device).
+All infrastructure (engine, session, migrations) lives in database.py.
+This module contains only graph-domain business logic.
 """
 
-import os
-import re
 import uuid as uuid_lib
-from datetime import datetime
-from typing import Optional, Dict, Any, List
-from contextlib import asynccontextmanager
-from urllib.parse import urlparse, parse_qs
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 
 from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Text,
-    Boolean,
-    DateTime,
-    ForeignKey,
-    UniqueConstraint,
     select,
     update,
     delete,
@@ -36,222 +24,34 @@ from sqlalchemy import (
     and_,
     or_,
     not_,
-    text,
 )
-from sqlalchemy import event
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import declarative_base, relationship
-from dotenv import load_dotenv, find_dotenv
-from .search_terms import build_document_search_terms, expand_query_terms
+from sqlalchemy.ext.asyncio import AsyncSession
+from .models import (
+    ROOT_NODE_UUID,
+    Node,
+    Memory,
+    Edge,
+    Path,
+    GlossaryKeyword,
+    ChangeCollector,
+    escape_like_literal,
+    serialize_row,
+    serialize_memory_ref,
+)
 
-# Load environment variables
-_dotenv_path = find_dotenv(usecwd=True)
-if _dotenv_path:
-    load_dotenv(_dotenv_path)
-
-Base = declarative_base()
-
-# Sentinel root node — parent_uuid of all top-level edges.
-# Using a fixed UUID instead of NULL avoids SQLite's NULL != NULL uniqueness quirk.
-ROOT_NODE_UUID = "00000000-0000-0000-0000-000000000000"
-
-
-# =============================================================================
-# ORM Models
-# =============================================================================
+if TYPE_CHECKING:
+    from .database import DatabaseManager
+    from .search import SearchIndexer
 
 
-class Node(Base):
-    """A conceptual entity whose UUID persists across content versions.
-
-    Edges reference nodes by UUID, so updating a memory's content (which
-    creates a new Memory row) never requires touching the graph structure.
+class GraphService:
     """
+    Graph-domain service for memory operations.
 
-    __tablename__ = "nodes"
-
-    uuid = Column(String(36), primary_key=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    memories = relationship("Memory", back_populates="node")
-    child_edges = relationship(
-        "Edge", foreign_keys="Edge.child_uuid", back_populates="child_node"
-    )
-    parent_edges = relationship(
-        "Edge", foreign_keys="Edge.parent_uuid", back_populates="parent_node"
-    )
-
-
-class Memory(Base):
-    """A single content version of a node.
-
-    Version chain: old.migrated_to → new.id.  All versions of the same
-    conceptual entity share the same node_uuid.
-    """
-
-    __tablename__ = "memories"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    node_uuid = Column(String(36), ForeignKey("nodes.uuid"), nullable=True)
-    content = Column(Text, nullable=False)
-    deprecated = Column(Boolean, default=False)
-    migrated_to = Column(Integer, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    node = relationship("Node", back_populates="memories")
-
-
-class Edge(Base):
-    """Directed parent→child relationship between two nodes.
-
-    Carries display name, priority, and disclosure.  The (parent_uuid,
-    child_uuid) pair is unique — one edge per structural relationship.
-    Multiple Path rows can reference the same edge (aliases).
-    """
-
-    __tablename__ = "edges"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    parent_uuid = Column(String(36), ForeignKey("nodes.uuid"), nullable=False)
-    child_uuid = Column(String(36), ForeignKey("nodes.uuid"), nullable=False)
-    name = Column(String(256), nullable=False)
-    priority = Column(Integer, default=0)
-    disclosure = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    __table_args__ = (
-        UniqueConstraint("parent_uuid", "child_uuid", name="uq_edge_parent_child"),
-    )
-
-    parent_node = relationship(
-        "Node", foreign_keys=[parent_uuid], back_populates="parent_edges"
-    )
-    child_node = relationship(
-        "Node", foreign_keys=[child_uuid], back_populates="child_edges"
-    )
-    paths = relationship("Path", back_populates="edge")
-
-
-class Path(Base):
-    """Materialized URI cache: (domain, path_string) → edge.
-
-    The source of truth for tree structure is the edges table.
-    Paths are a routing convenience for URI resolution.
-    """
-
-    __tablename__ = "paths"
-
-    domain = Column(String(64), primary_key=True, default="core")
-    path = Column(String(512), primary_key=True)
-    edge_id = Column(Integer, ForeignKey("edges.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    edge = relationship("Edge", back_populates="paths")
-
-
-class GlossaryKeyword(Base):
-    """Glossary keyword-to-node binding (豆辞典).
-
-    When a keyword appears in a memory's content, the MCP layer surfaces
-    the associated nodes and the frontend highlights the keyword.
-    Multiple keywords can point to the same node, and the same keyword
-    can point to multiple nodes.
-    """
-
-    __tablename__ = "glossary_keywords"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    keyword = Column(Text, nullable=False)
-    node_uuid = Column(
-        String(36),
-        ForeignKey("nodes.uuid", ondelete="CASCADE"),
-        nullable=False,
-    )
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    __table_args__ = (
-        UniqueConstraint("keyword", "node_uuid", name="uq_glossary_keyword_node"),
-    )
-
-    node = relationship("Node")
-
-
-class SearchDocument(Base):
-    """Derived search row for one reachable path of an active node."""
-
-    __tablename__ = "search_documents"
-
-    domain = Column(String(64), primary_key=True, default="core")
-    path = Column(String(512), primary_key=True)
-    node_uuid = Column(
-        String(36),
-        ForeignKey("nodes.uuid", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    memory_id = Column(
-        Integer,
-        ForeignKey("memories.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    uri = Column(Text, nullable=False)
-    content = Column(Text, nullable=False)
-    disclosure = Column(Text, nullable=True)
-    # Stores glossary keywords plus auxiliary CJK search terms.
-    keywords_text = Column(Text, nullable=False, default="")
-    priority = Column(Integer, nullable=False, default=0)
-    updated_at = Column(DateTime, default=datetime.utcnow)
-
-
-# =============================================================================
-# Change Collector
-# =============================================================================
-
-
-class ChangeCollector:
-    """Accumulates serialized row data before mutations for changeset recording.
-
-    Passed optionally through the operation layers so that each delete
-    primitive can record pre-deletion state without coupling the "what to
-    record" concern into the "what to delete" logic.
-
-    Memory rows are stored as pointers only (no content) — the actual
-    content lives in the DB (deprecated but not deleted) and can be
-    resolved on the fly at review time.
-    """
-
-    def __init__(self):
-        self.nodes: List[Dict[str, Any]] = []
-        self.memories: List[Dict[str, Any]] = []
-        self.edges: List[Dict[str, Any]] = []
-        self.paths: List[Dict[str, Any]] = []
-        self.glossary_keywords: List[Dict[str, Any]] = []
-
-    def record(self, table: str, row_data: Dict[str, Any]):
-        if table == "memories":
-            row_data = {k: v for k, v in row_data.items() if k != "content"}
-        getattr(self, table).append(row_data)
-
-    def to_dict(self) -> Dict[str, list]:
-        return {
-            "nodes": self.nodes,
-            "memories": self.memories,
-            "edges": self.edges,
-            "paths": self.paths,
-            "glossary_keywords": self.glossary_keywords,
-        }
-
-
-# =============================================================================
-# SQLite Client
-# =============================================================================
-
-
-class SQLiteClient:
-    """
-    Async database client for memory operations.
-
-    Supports SQLite (local) and PostgreSQL (remote, multi-device).
+    Owns all graph traversal, memory CRUD, path management, and
+    orphan/deprecated memory handling.  Receives a DatabaseManager
+    for session access and a SearchIndexer for post-mutation index
+    refreshes.
 
     Core operations:
     - read: Get memory by path (Path → Edge → Memory via node_uuid)
@@ -259,145 +59,12 @@ class SQLiteClient:
     - update: New memory version on same node; update edge metadata
     - add_path: Create alias (new Path, maybe new Edge)
     - remove_path: Delete paths; refuse if children would become unreachable
-    - search: Substring search on path and content
     """
 
-    def __init__(self, database_url: str):
-        """
-        Initialize the database client.
-
-        Args:
-            database_url: SQLAlchemy async URL, e.g.
-                         SQLite:     "sqlite+aiosqlite:///nocturne_memory.db"
-                         PostgreSQL: "postgresql+asyncpg://user:pass@host:5432/dbname"
-        """
-        self.database_url = database_url
-        self.db_type = self._detect_database_type(database_url)
-
-        # PostgreSQL benefits from connection pooling; SQLite doesn't need it
-        engine_kwargs = {"echo": False}
-        if self.db_type == "postgresql":
-            parsed = urlparse(database_url)
-            is_local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
-
-            connect_args = {}
-            # Use robust query parsing. Values may legally contain '='.
-            parsed_qs = parse_qs(parsed.query, keep_blank_values=True)
-            ssl_values = parsed_qs.get("ssl", []) + parsed_qs.get("sslmode", [])
-            ssl_value = ssl_values[-1].lower() if ssl_values else ""
-            ssl_disabled = ssl_value in ("disable", "false", "off", "0", "no")
-
-            if not is_local and not ssl_disabled:
-                # Remote PostgreSQL: enable SSL and disable prepared statement
-                # cache for compatibility with PgBouncer-based poolers
-                # (e.g. Supabase, Neon).
-                connect_args["ssl"] = "require"
-                connect_args["statement_cache_size"] = 0
-
-            engine_kwargs.update(
-                {
-                    "pool_size": 10,
-                    "max_overflow": 20,
-                    "pool_recycle": 3600,  # Recycle connections after 1 hour
-                    "pool_pre_ping": True,  # Verify connections before using
-                    "connect_args": connect_args,
-                }
-            )
-
-        self.engine = create_async_engine(database_url, **engine_kwargs)
-        
-        if self.db_type == "sqlite":
-            @event.listens_for(self.engine.sync_engine, "connect")
-            def set_sqlite_pragma(dbapi_connection, connection_record):
-                cursor = dbapi_connection.cursor()
-                cursor.execute("PRAGMA foreign_keys=ON")
-                cursor.close()
-
-        self.async_session = async_sessionmaker(
-            self.engine, class_=AsyncSession, expire_on_commit=False
-        )
-
-        # Glossary Aho-Corasick automaton cache (cross-process safe via DB fingerprint)
-        self._glossary_automaton = None
-        self._glossary_fingerprint = None  # (count, max_id) tuple
-
-    def _detect_database_type(self, url: str) -> str:
-        """Detect database type from connection URL."""
-        if "postgresql" in url:
-            return "postgresql"
-        elif "sqlite" in url:
-            return "sqlite"
-        else:
-            # Default to sqlite for backward compatibility
-            return "sqlite"
-
-    async def init_db(self):
-        """Create tables if they don't exist, and run migrations for schema changes."""
-        import sys as _sys
-        import os as _os
-
-        project_root = _os.path.abspath(
-            _os.path.join(_os.path.dirname(__file__), "..", "..")
-        )
-        if project_root not in _sys.path:
-            _sys.path.insert(0, project_root)
-
-        from db.migrations.runner import run_migrations
-
-        try:
-            from sqlalchemy import inspect as sa_inspect
-            
-            def check_initialized(connection):
-                return sa_inspect(connection).has_table("memories")
-
-            async with self.engine.begin() as conn:
-                is_initialized = await conn.run_sync(check_initialized)
-                if not is_initialized:
-                    await conn.run_sync(Base.metadata.create_all)
-
-            await run_migrations(self.engine)
-        except Exception as e:
-            db_url = self.database_url
-            if "@" in db_url and ":" in db_url:
-                try:
-                    parsed = urlparse(db_url)
-                    if parsed.password:
-                        db_url = db_url.replace(f":{parsed.password}@", ":***@")
-                except Exception:
-                    pass
-            raise RuntimeError(
-                f"Failed to connect to database.\n"
-                f"  URL: {db_url}\n"
-                f"  Error: {e}\n\n"
-                f"Troubleshooting:\n"
-                f"  - Check that DATABASE_URL in your .env file is correct\n"
-                f"  - For PostgreSQL, ensure the host is reachable and the password has no unescaped special characters (& * # etc.)\n"
-                f"  - For SQLite, ensure the file path is absolute and the directory exists"
-            ) from e
-
-    async def close(self):
-        """Close the database connection."""
-        await self.engine.dispose()
-
-    @asynccontextmanager
-    async def session(self):
-        """Get an async session context manager."""
-        async with self.async_session() as session:
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
-
-    @asynccontextmanager
-    async def _optional_session(self, session: Optional[AsyncSession] = None):
-        """Helper to use an existing session or create a new one."""
-        if session:
-            yield session
-        else:
-            async with self.session() as new_session:
-                yield new_session
+    def __init__(self, db: "DatabaseManager", search: "SearchIndexer"):
+        self.session = db.session
+        self._optional_session = db._optional_session
+        self._search = search
 
     # =========================================================================
     # Read Operations
@@ -618,11 +285,6 @@ class SQLiteClient:
         # Tier 3: whatever is available
         return paths[0]
 
-    @staticmethod
-    def _escape_like_literal(value: str) -> str:
-        """Escape special chars in SQL LIKE patterns for literal matching."""
-        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
     async def get_all_paths(self, domain: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Get all paths with their node/edge info.
@@ -667,31 +329,6 @@ class SQLiteClient:
                 )
 
             return paths
-
-    # =========================================================================
-    # Row Serialization (for changeset recording)
-    # =========================================================================
-
-    @staticmethod
-    def _serialize_row(obj) -> Dict[str, Any]:
-        """Convert an ORM model instance to a plain dict for snapshot storage."""
-        d = {}
-        for col in obj.__table__.columns:
-            val = getattr(obj, col.name)
-            if isinstance(val, datetime):
-                val = val.isoformat()
-            d[col.name] = val
-        return d
-
-    @classmethod
-    def _serialize_memory_ref(cls, obj) -> Dict[str, Any]:
-        """Serialize a Memory row as a pointer (no content).
-
-        The actual content stays in the DB and is resolved at review time.
-        """
-        d = cls._serialize_row(obj)
-        d.pop("content", None)
-        return d
 
     # =========================================================================
     # Layer 0: Row-Level Primitives
@@ -808,7 +445,7 @@ class SQLiteClient:
         )
 
         if exclude_domain and exclude_path_prefix:
-            safe_prefix = self._escape_like_literal(exclude_path_prefix)
+            safe_prefix = escape_like_literal(exclude_path_prefix)
             stmt = stmt.where(
                 not_(
                     and_(
@@ -959,7 +596,7 @@ class SQLiteClient:
             "deleted_memory_id": memory_id,
             "chain_repaired_to": successor_id,
             "node_uuid": target.node_uuid,
-            "deleted_memory_before": self._serialize_memory_ref(target),
+            "deleted_memory_before": serialize_memory_ref(target),
         }
 
     async def _get_subtree_path_rows(
@@ -969,7 +606,7 @@ class SQLiteClient:
         base_path: str,
     ) -> List[Dict[str, Any]]:
         """Return serialized path rows for base_path and all descendants."""
-        safe = self._escape_like_literal(base_path)
+        safe = escape_like_literal(base_path)
         result = await session.execute(
             select(Path).where(
                 Path.domain == domain,
@@ -979,7 +616,7 @@ class SQLiteClient:
                 ),
             )
         )
-        return [self._serialize_row(p) for p in result.scalars().all()]
+        return [serialize_row(p) for p in result.scalars().all()]
 
     async def _cascade_create_paths(
         self,
@@ -1034,7 +671,7 @@ class SQLiteClient:
         collector: Optional[ChangeCollector] = None,
     ) -> None:
         """Delete a path and all its descendant paths in the given domain."""
-        safe = self._escape_like_literal(path)
+        safe = escape_like_literal(path)
         result = await session.execute(
             select(Path)
             .where(Path.domain == domain)
@@ -1048,7 +685,7 @@ class SQLiteClient:
         paths = result.scalars().all()
 
         for p in paths:
-            serialized = self._serialize_row(p)
+            serialized = serialize_row(p)
             if collector:
                 collector.record("paths", serialized)
             await session.delete(p)
@@ -1075,10 +712,10 @@ class SQLiteClient:
             )
 
         if collector:
-            collector.record("edges", self._serialize_row(edge))
+            collector.record("edges", serialize_row(edge))
         await session.delete(edge)
 
-    async def _cascade_delete_node(
+    async def cascade_delete_node(
         self, session: AsyncSession, node_uuid: str
     ) -> Optional[Dict[str, list]]:
         """Hard-delete a node, all its memories, edges, and paths."""
@@ -1103,13 +740,13 @@ class SQLiteClient:
             select(Memory).where(Memory.node_uuid == node_uuid)
         )
         for mem in mem_result.scalars().all():
-            collector.record("memories", self._serialize_row(mem))
+            collector.record("memories", serialize_row(mem))
 
         kw_result = await session.execute(
             select(GlossaryKeyword).where(GlossaryKeyword.node_uuid == node_uuid)
         )
         for kw in kw_result.scalars().all():
-            collector.record("glossary_keywords", self._serialize_row(kw))
+            collector.record("glossary_keywords", serialize_row(kw))
 
         await session.execute(
             delete(Memory).where(Memory.node_uuid == node_uuid)
@@ -1117,7 +754,7 @@ class SQLiteClient:
         node_row = await session.execute(select(Node).where(Node.uuid == node_uuid))
         node = node_row.scalar_one_or_none()
         if node:
-            collector.record("nodes", self._serialize_row(node))
+            collector.record("nodes", serialize_row(node))
         await session.execute(delete(Node).where(Node.uuid == node_uuid))
 
         return collector.to_dict()
@@ -1162,7 +799,7 @@ class SQLiteClient:
         if await self._count_paths_for_edge(session, edge.id) > 0:
             return None
         if collector:
-            collector.record("edges", self._serialize_row(edge))
+            collector.record("edges", serialize_row(edge))
         info = {
             "edge_id": edge.id,
             "parent_uuid": edge.parent_uuid,
@@ -1215,7 +852,7 @@ class SQLiteClient:
                 )
             )
             for mem in active_mems.scalars().all():
-                collector.record("memories", self._serialize_row(mem))
+                collector.record("memories", serialize_row(mem))
 
         await self._deprecate_node_memories(session, node_uuid)
 
@@ -1225,7 +862,7 @@ class SQLiteClient:
         """Hard GC: if a node has zero memory rows, cascade-delete everything."""
         if await self._count_memories_for_node(session, node_uuid) > 0:
             return None
-        return await self._cascade_delete_node(session, node_uuid)
+        return await self.cascade_delete_node(session, node_uuid)
 
     # =========================================================================
     # Public Write API
@@ -1287,7 +924,7 @@ class SQLiteClient:
                 disclosure,
             )
 
-            await self.refresh_search_documents_for_node(new_uuid, session=session)
+            await self._search.refresh_search_documents_for_node(new_uuid, session=session)
 
             return {
                 "id": memory.id,
@@ -1297,10 +934,10 @@ class SQLiteClient:
                 "uri": f"{domain}://{final_path}",
                 "priority": priority,
                 "rows_after": {
-                    "nodes": [self._serialize_row(node)],
-                    "memories": [self._serialize_memory_ref(memory)],
-                    "edges": [self._serialize_row(created["edge"])],
-                    "paths": [self._serialize_row(created["path"])],
+                    "nodes": [serialize_row(node)],
+                    "memories": [serialize_memory_ref(memory)],
+                    "edges": [serialize_row(created["edge"])],
+                    "paths": [serialize_row(created["path"])],
                 },
             }
 
@@ -1357,7 +994,7 @@ class SQLiteClient:
             rows_before: Dict[str, list] = {}
             rows_after: Dict[str, list] = {}
 
-            edge_before = self._serialize_row(edge)
+            edge_before = serialize_row(edge)
 
             if priority is not None:
                 edge.priority = priority
@@ -1366,7 +1003,7 @@ class SQLiteClient:
                 edge.disclosure = disclosure
                 session.add(edge)
 
-            edge_after = self._serialize_row(edge)
+            edge_after = serialize_row(edge)
             if edge_before != edge_after:
                 rows_before["edges"] = [edge_before]
                 rows_after["edges"] = [edge_after]
@@ -1374,7 +1011,7 @@ class SQLiteClient:
             new_memory_id = old_id
 
             if content is not None:
-                rows_before["memories"] = [self._serialize_memory_ref(old_memory)]
+                rows_before["memories"] = [serialize_memory_ref(old_memory)]
 
                 new_memory = await self._insert_memory(
                     session, node_uuid, content, deprecated=True
@@ -1396,13 +1033,13 @@ class SQLiteClient:
                     select(Memory).where(Memory.id.in_([old_id, new_memory_id]))
                 )
                 rows_after["memories"] = [
-                    self._serialize_memory_ref(m) for m in updated.scalars().all()
+                    serialize_memory_ref(m) for m in updated.scalars().all()
                 ]
 
             if content is None:
                 session.add(path_obj)
 
-            await self.refresh_search_documents_for_node(node_uuid, session=session)
+            await self._search.refresh_search_documents_for_node(node_uuid, session=session)
 
             return {
                 "domain": domain,
@@ -1446,7 +1083,7 @@ class SQLiteClient:
                 .values(deprecated=False, migrated_to=None)
             )
 
-            await self.refresh_search_documents_for_node(
+            await self._search.refresh_search_documents_for_node(
                 target_memory.node_uuid, session=session
             )
 
@@ -1537,9 +1174,9 @@ class SQLiteClient:
                 "paths": created_paths,
             }
             if result["edge_created"]:
-                rows_after["edges"] = [self._serialize_row(result["edge"])]
+                rows_after["edges"] = [serialize_row(result["edge"])]
 
-            await self.refresh_search_documents_for_prefix(
+            await self._search.refresh_search_documents_for_prefix(
                 new_domain,
                 new_path,
                 session=session,
@@ -1612,7 +1249,7 @@ class SQLiteClient:
                 )
 
             collector = ChangeCollector()
-            affected_nodes = await self._get_node_uuids_for_prefix(session, domain, path)
+            affected_nodes = await self._search.get_node_uuids_for_prefix(session, domain, path)
             await self._delete_subtree_paths(session, domain, path, collector=collector)
             await session.flush()
 
@@ -1622,7 +1259,7 @@ class SQLiteClient:
             await self._gc_node_soft(session, target_node_uuid, collector=collector)
 
             for node_uuid in affected_nodes:
-                await self.refresh_search_documents_for_node(node_uuid, session=session)
+                await self._search.refresh_search_documents_for_node(node_uuid, session=session)
 
             return {
                 "rows_before": collector.to_dict(),
@@ -1698,321 +1335,9 @@ class SQLiteClient:
                 session, parent_uuid, node_uuid, edge_name, priority, disclosure
             )
             await self._insert_path(session, domain, path, edge.id)
-            await self.refresh_search_documents_for_node(node_uuid, session=session)
+            await self._search.refresh_search_documents_for_node(node_uuid, session=session)
 
             return {"uri": f"{domain}://{path}", "node_uuid": node_uuid}
-
-    # =========================================================================
-    # Search Index Operations
-    # =========================================================================
-
-    @staticmethod
-    def _normalize_search_query(query: str) -> str:
-        """Normalize user input into token-friendly text for FTS parsers."""
-        return expand_query_terms(query)
-
-    @staticmethod
-    def _to_sqlite_match_query(query: str) -> str:
-        """Convert free text into a conservative FTS5 MATCH expression."""
-        normalized = SQLiteClient._normalize_search_query(query)
-        tokens = [token.replace('"', '""') for token in normalized.split() if token]
-        if not tokens:
-            raw = query.strip().replace('"', '""')
-            return f'"{raw}"' if raw else ""
-        return " AND ".join(f'"{token}"' for token in tokens)
-
-    @staticmethod
-    def _build_search_snippet(content: str, query: str) -> str:
-        """Build a short content snippet around the first literal hit."""
-        if not content:
-            return ""
-
-        query_lower = query.lower()
-        content_lower = content.lower()
-        pos = content_lower.find(query_lower)
-        if pos < 0:
-            fallback = content[:80]
-            return fallback + ("..." if len(content) > 80 else "")
-
-        start = max(0, pos - 30)
-        end = min(len(content), pos + len(query) + 30)
-        prefix = "..." if start > 0 else ""
-        suffix = "..." if end < len(content) else ""
-        return prefix + content[start:end] + suffix
-
-    async def _build_search_documents_for_node(
-        self, session: AsyncSession, node_uuid: str
-    ) -> List[Dict[str, Any]]:
-        """Materialize search rows for every reachable path of a node."""
-        memory = (
-            await session.execute(
-                select(Memory)
-                .where(Memory.node_uuid == node_uuid, Memory.deprecated == False)
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if not memory:
-            return []
-
-        path_rows = (
-            await session.execute(
-                select(Path.domain, Path.path, Edge.priority, Edge.disclosure)
-                .select_from(Path)
-                .join(Edge, Path.edge_id == Edge.id)
-                .where(Edge.child_uuid == node_uuid)
-                .order_by(Path.domain, Path.path)
-            )
-        ).all()
-        if not path_rows:
-            return []
-
-        keyword_rows = await session.execute(
-            select(GlossaryKeyword.keyword)
-            .where(GlossaryKeyword.node_uuid == node_uuid)
-            .order_by(GlossaryKeyword.keyword)
-        )
-        glossary_text = " ".join(row[0] for row in keyword_rows if row[0])
-
-        documents = []
-        for row in path_rows:
-            uri = f"{row.domain}://{row.path}"
-            documents.append(
-                {
-                    "domain": row.domain,
-                    "path": row.path,
-                    "node_uuid": node_uuid,
-                    "memory_id": memory.id,
-                    "uri": uri,
-                    "content": memory.content,
-                    "disclosure": row.disclosure,
-                    "keywords_text": build_document_search_terms(
-                        row.path,
-                        uri,
-                        memory.content,
-                        row.disclosure,
-                        glossary_text,
-                    ),
-                    "priority": row.priority,
-                }
-            )
-        return documents
-
-    async def _delete_search_documents_for_node(
-        self, session: AsyncSession, node_uuid: str
-    ) -> None:
-        """Remove all derived search rows for a node."""
-        if self.db_type == "sqlite":
-            await session.execute(
-                text("DELETE FROM search_documents_fts WHERE node_uuid = :node_uuid"),
-                {"node_uuid": node_uuid},
-            )
-
-        await session.execute(
-            delete(SearchDocument).where(SearchDocument.node_uuid == node_uuid)
-        )
-
-    async def _insert_search_documents(
-        self, session: AsyncSession, documents: List[Dict[str, Any]]
-    ) -> None:
-        """Insert fresh derived search rows for one node."""
-        if not documents:
-            return
-
-        session.add_all(SearchDocument(**doc) for doc in documents)
-        await session.flush()
-
-        if self.db_type != "sqlite":
-            return
-
-        for doc in documents:
-            await session.execute(
-                text(
-                    """
-                    INSERT INTO search_documents_fts (
-                        domain, path, node_uuid, uri, content, disclosure, keywords_text
-                    ) VALUES (
-                        :domain, :path, :node_uuid, :uri, :content, :disclosure, :keywords_text
-                    )
-                    """
-                ),
-                doc,
-            )
-
-    async def refresh_search_documents_for_node(
-        self, node_uuid: str, session: Optional[AsyncSession] = None
-    ) -> None:
-        """Rebuild derived search rows for one node."""
-        async with self._optional_session(session) as session:
-            documents = await self._build_search_documents_for_node(session, node_uuid)
-            await self._delete_search_documents_for_node(session, node_uuid)
-            await self._insert_search_documents(session, documents)
-
-    async def _get_node_uuids_for_prefix(
-        self, session: AsyncSession, domain: str, base_path: str
-    ) -> List[str]:
-        """Collect unique node UUIDs for a path and all descendants."""
-        safe = self._escape_like_literal(base_path)
-        result = await session.execute(
-            select(Edge.child_uuid)
-            .select_from(Path)
-            .join(Edge, Path.edge_id == Edge.id)
-            .where(Path.domain == domain)
-            .where(
-                or_(
-                    Path.path == base_path,
-                    Path.path.like(f"{safe}/%", escape="\\"),
-                )
-            )
-            .distinct()
-        )
-        return [row[0] for row in result.all()]
-
-    async def refresh_search_documents_for_prefix(
-        self,
-        domain: str,
-        base_path: str,
-        session: Optional[AsyncSession] = None,
-    ) -> None:
-        """Rebuild derived search rows for a path subtree."""
-        async with self._optional_session(session) as session:
-            node_uuids = await self._get_node_uuids_for_prefix(session, domain, base_path)
-            for node_uuid in node_uuids:
-                documents = await self._build_search_documents_for_node(session, node_uuid)
-                await self._delete_search_documents_for_node(session, node_uuid)
-                await self._insert_search_documents(session, documents)
-
-    async def rebuild_search_documents(
-        self, session: Optional[AsyncSession] = None
-    ) -> None:
-        """Fully rebuild the derived search index from live graph state."""
-        async with self._optional_session(session) as session:
-            if self.db_type == "sqlite":
-                await session.execute(text("DELETE FROM search_documents_fts"))
-
-            await session.execute(delete(SearchDocument))
-
-            result = await session.execute(
-                select(Edge.child_uuid)
-                .select_from(Path)
-                .join(Edge, Path.edge_id == Edge.id)
-                .distinct()
-            )
-            for (node_uuid,) in result.all():
-                documents = await self._build_search_documents_for_node(session, node_uuid)
-                await self._insert_search_documents(session, documents)
-
-    # =========================================================================
-    # Search Operations
-    # =========================================================================
-
-    async def search(
-        self, query: str, limit: int = 10, domain: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Search memories by path and content using the derived FTS index.
-        """
-        async with self.session() as session:
-            candidate_limit = max(limit * 5, limit)
-            params = {"candidate_limit": candidate_limit}
-            domain_clause = ""
-            if domain is not None:
-                params["domain"] = domain
-                domain_clause = "AND sd.domain = :domain"
-
-            if self.db_type == "sqlite":
-                match_query = self._to_sqlite_match_query(query)
-                if not match_query:
-                    return []
-
-                params["match_query"] = match_query
-                result = await session.execute(
-                    text(
-                        f"""
-                        SELECT
-                            sd.domain,
-                            sd.path,
-                            sd.node_uuid,
-                            sd.uri,
-                            sd.priority,
-                            sd.content,
-                            bm25(search_documents_fts, 2.5, 2.0, 1.0, 0.75) AS score
-                        FROM search_documents AS sd
-                        JOIN search_documents_fts
-                          ON search_documents_fts.domain = sd.domain
-                         AND search_documents_fts.path = sd.path
-                        WHERE search_documents_fts MATCH :match_query
-                          {domain_clause}
-                        ORDER BY score ASC, sd.priority ASC, length(sd.path) ASC
-                        LIMIT :candidate_limit
-                        """
-                    ),
-                    params,
-                )
-            else:
-                normalized = self._normalize_search_query(query)
-                if not normalized:
-                    return []
-
-                params["ts_query"] = normalized
-                result = await session.execute(
-                    text(
-                        f"""
-                        SELECT
-                            sd.domain,
-                            sd.path,
-                            sd.node_uuid,
-                            sd.uri,
-                            sd.priority,
-                            sd.content,
-                            ts_rank_cd(
-                                to_tsvector(
-                                    'simple',
-                                    coalesce(sd.path, '') || ' ' ||
-                                    coalesce(sd.uri, '') || ' ' ||
-                                    coalesce(sd.content, '') || ' ' ||
-                                    coalesce(sd.disclosure, '') || ' ' ||
-                                    coalesce(sd.keywords_text, '')
-                                ),
-                                websearch_to_tsquery('simple', :ts_query)
-                            ) AS score
-                        FROM search_documents AS sd
-                        WHERE to_tsvector(
-                                'simple',
-                                coalesce(sd.path, '') || ' ' ||
-                                coalesce(sd.uri, '') || ' ' ||
-                                coalesce(sd.content, '') || ' ' ||
-                                coalesce(sd.disclosure, '') || ' ' ||
-                                coalesce(sd.keywords_text, '')
-                              ) @@ websearch_to_tsquery('simple', :ts_query)
-                          {domain_clause}
-                        ORDER BY score DESC, sd.priority ASC, char_length(sd.path) ASC
-                        LIMIT :candidate_limit
-                        """
-                    ),
-                    params,
-                )
-
-            matches = []
-            seen_nodes = set()
-
-            for row in result.mappings():
-                if row["node_uuid"] in seen_nodes:
-                    continue
-                seen_nodes.add(row["node_uuid"])
-                matches.append(
-                    {
-                        "domain": row["domain"],
-                        "path": row["path"],
-                        "uri": row["uri"],
-                        "name": row["path"].rsplit("/", 1)[-1],
-                        "snippet": self._build_search_snippet(row["content"], query),
-                        "priority": row["priority"],
-                    }
-                )
-                if len(matches) >= limit:
-                    break
-
-            return matches
 
     # =========================================================================
     # Recent Memories
@@ -2294,250 +1619,3 @@ class SQLiteClient:
 
             return response
 
-    # =========================================================================
-    # Glossary (豆辞典) Operations
-    # =========================================================================
-
-    async def add_glossary_keyword(
-        self, keyword: str, node_uuid: str
-    ) -> Dict[str, Any]:
-        """Bind a glossary keyword to a node."""
-        keyword = keyword.strip()
-        if not keyword:
-            raise ValueError("Glossary keyword cannot be empty")
-            
-        from sqlalchemy.exc import IntegrityError
-        
-        async with self.session() as session:
-            node = await session.get(Node, node_uuid)
-            if not node:
-                raise ValueError(f"Node '{node_uuid}' not found")
-
-            entry = GlossaryKeyword(keyword=keyword, node_uuid=node_uuid)
-            session.add(entry)
-            
-            try:
-                await session.flush()
-            except IntegrityError:
-                raise ValueError(f"Keyword '{keyword}' is already bound to this node")
-
-            await self.refresh_search_documents_for_node(node_uuid, session=session)
-            
-            row_after = self._serialize_row(entry)
-
-            return {
-                "id": entry.id, 
-                "keyword": keyword, 
-                "node_uuid": node_uuid,
-                "rows_before": {"glossary_keywords": []},
-                "rows_after": {"glossary_keywords": [row_after]},
-            }
-
-    async def remove_glossary_keyword(
-        self, keyword: str, node_uuid: str
-    ) -> Dict[str, Any]:
-        """Remove a glossary keyword binding."""
-        keyword = keyword.strip()
-        async with self.session() as session:
-            existing = await session.execute(
-                select(GlossaryKeyword).where(
-                    GlossaryKeyword.keyword == keyword,
-                    GlossaryKeyword.node_uuid == node_uuid,
-                )
-            )
-            entry = existing.scalar_one_or_none()
-            if not entry:
-                return {
-                    "success": False,
-                    "rows_before": {"glossary_keywords": []},
-                    "rows_after": {"glossary_keywords": []},
-                }
-
-            row_before = self._serialize_row(entry)
-            
-            await session.execute(
-                delete(GlossaryKeyword).where(
-                    GlossaryKeyword.id == entry.id
-                )
-            )
-
-            await self.refresh_search_documents_for_node(node_uuid, session=session)
-            
-            return {
-                "success": True,
-                "rows_before": {"glossary_keywords": [row_before]},
-                "rows_after": {"glossary_keywords": []},
-            }
-
-    async def get_glossary_for_node(self, node_uuid: str) -> List[str]:
-        """Get all keywords bound to a node."""
-        async with self.session() as session:
-            result = await session.execute(
-                select(GlossaryKeyword.keyword)
-                .where(GlossaryKeyword.node_uuid == node_uuid)
-                .order_by(GlossaryKeyword.keyword)
-            )
-            return [row[0] for row in result.all()]
-
-    async def get_all_glossary(self) -> List[Dict[str, Any]]:
-        """Get all glossary entries grouped by keyword, with node URIs."""
-        async with self.session() as session:
-            result = await session.execute(
-                select(
-                    GlossaryKeyword.keyword,
-                    GlossaryKeyword.node_uuid,
-                    Path.domain,
-                    Path.path,
-                    Memory.content,
-                )
-                .select_from(GlossaryKeyword)
-                .join(Node, Node.uuid == GlossaryKeyword.node_uuid)
-                .outerjoin(Edge, Edge.child_uuid == Node.uuid)
-                .outerjoin(Path, Path.edge_id == Edge.id)
-                .outerjoin(
-                    Memory,
-                    and_(
-                        Memory.node_uuid == Node.uuid,
-                        Memory.deprecated == False,
-                    ),
-                )
-                .order_by(GlossaryKeyword.keyword, Path.domain, Path.path)
-            )
-
-            from collections import defaultdict
-
-            groups: Dict[str, Dict[str, Dict[str, str]]] = defaultdict(dict)
-
-            for keyword, node_uuid, domain, path, content in result.all():
-                if node_uuid not in groups[keyword]:
-                    snippet = ""
-                    if content:
-                        snippet = content[:100].replace("\n", " ")
-                        if len(content) > 100:
-                            snippet += "..."
-                    uri = f"{domain}://{path}" if domain is not None and path is not None else f"unlinked://{node_uuid}"
-                    groups[keyword][node_uuid] = {
-                        "node_uuid": node_uuid,
-                        "uri": uri,
-                        "content_snippet": snippet,
-                    }
-
-            return [
-                {"keyword": kw, "nodes": list(node_map.values())}
-                for kw, node_map in groups.items()
-            ]
-
-    async def find_glossary_in_content(
-        self, content: str
-    ) -> Dict[str, List[Dict[str, str]]]:
-        """Scan content for glossary keywords using Aho-Corasick.
-
-        Uses a DB-level fingerprint (row count + max id + max created_at) to detect staleness,
-        so cross-process writes (Web API, rollback, cascade delete) are caught
-        without relying on in-process flags.
-
-        Returns dict of keyword -> list of {node_uuid, uri} for matches found.
-        """
-        import ahocorasick
-        from sqlalchemy import func
-
-        async with self.session() as session:
-            fp_row = await session.execute(
-                select(
-                    func.count(GlossaryKeyword.id),
-                    func.coalesce(func.max(GlossaryKeyword.id), 0),
-                    func.max(GlossaryKeyword.created_at),
-                )
-            )
-            current_fp = tuple(fp_row.one())
-
-        if current_fp[0] == 0:
-            self._glossary_automaton = None
-            self._glossary_fingerprint = current_fp
-            return {}
-
-        if current_fp != self._glossary_fingerprint:
-            async with self.session() as session:
-                kw_result = await session.execute(
-                    select(GlossaryKeyword.keyword).distinct()
-                )
-                all_keywords = [row[0] for row in kw_result.all()]
-
-            if not all_keywords:
-                self._glossary_automaton = None
-            else:
-                automaton = ahocorasick.Automaton()
-                for kw in all_keywords:
-                    automaton.add_word(kw, kw)
-                automaton.make_automaton()
-                self._glossary_automaton = automaton
-
-            self._glossary_fingerprint = current_fp
-
-        if self._glossary_automaton is None:
-            return {}
-
-        found_keywords: set = set()
-        for _, kw in self._glossary_automaton.iter(content):
-            found_keywords.add(kw)
-
-        if not found_keywords:
-            return {}
-
-        async with self.session() as session:
-            result = await session.execute(
-                select(
-                    GlossaryKeyword.keyword,
-                    GlossaryKeyword.node_uuid,
-                    Path.domain,
-                    Path.path,
-                )
-                .select_from(GlossaryKeyword)
-                .outerjoin(Edge, Edge.child_uuid == GlossaryKeyword.node_uuid)
-                .outerjoin(Path, Path.edge_id == Edge.id)
-                .where(GlossaryKeyword.keyword.in_(found_keywords))
-                .order_by(GlossaryKeyword.keyword, Path.domain, Path.path)
-            )
-
-            from collections import defaultdict
-
-            matches: Dict[str, Dict[str, str]] = defaultdict(dict)
-            for keyword, node_uuid, domain, path in result.all():
-                if node_uuid not in matches[keyword]:
-                    matches[keyword][node_uuid] = f"{domain}://{path}" if domain is not None and path is not None else f"unlinked://{node_uuid}"
-
-            return {
-                kw: [
-                    {"node_uuid": nid, "uri": uri}
-                    for nid, uri in node_map.items()
-                ]
-                for kw, node_map in matches.items()
-            }
-
-
-# =============================================================================
-# Global Singleton
-# =============================================================================
-
-_db_client: Optional[SQLiteClient] = None
-
-
-def get_db_client() -> SQLiteClient:
-    """Get the global database client instance."""
-    global _db_client
-    if _db_client is None:
-        database_url = os.getenv("DATABASE_URL")
-        if not database_url:
-            raise ValueError(
-                "DATABASE_URL environment variable is not set. Please check your .env file."
-            )
-        _db_client = SQLiteClient(database_url)
-    return _db_client
-
-
-async def close_db_client():
-    """Close the global database client connection."""
-    global _db_client
-    if _db_client:
-        await _db_client.close()
-        _db_client = None
