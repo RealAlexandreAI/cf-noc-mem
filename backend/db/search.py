@@ -180,7 +180,7 @@ class SearchIndexer:
                     INSERT INTO search_documents_fts (
                         domain, path, node_uuid, uri, content, disclosure, search_terms
                     ) VALUES (
-                        :domain, :path, :node_uuid, :uri, :content, :disclosure, :search_terms
+                        :domain, :path, :node_uuid, :uri, :content, coalesce(:disclosure, ''), :search_terms
                     )
                     """
                 ),
