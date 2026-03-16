@@ -1176,11 +1176,9 @@ class GraphService:
             if result["edge_created"]:
                 rows_after["edges"] = [serialize_row(result["edge"])]
 
-            await self._search.refresh_search_documents_for_prefix(
-                new_domain,
-                new_path,
-                session=session,
-            )
+            affected_nodes = await self._search.get_node_uuids_for_prefix(session, new_domain, new_path)
+            for node_uuid in affected_nodes:
+                await self._search.refresh_search_documents_for_node(node_uuid, session=session)
 
             return {
                 "new_uri": f"{new_domain}://{new_path}",

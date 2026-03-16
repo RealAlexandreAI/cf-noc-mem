@@ -2,8 +2,9 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-logger = logging.getLogger(__name__)
+from db.search_terms import build_document_search_terms
 
+logger = logging.getLogger(__name__)
 
 async def up(engine: AsyncEngine):
     """
@@ -17,7 +18,7 @@ async def up(engine: AsyncEngine):
         "coalesce(uri, '') || ' ' || "
         "coalesce(content, '') || ' ' || "
         "coalesce(disclosure, '') || ' ' || "
-        "coalesce(keywords_text, '')"
+        "coalesce(search_terms, '')"
     )
     keyword_agg = (
         "COALESCE((SELECT string_agg(keyword, ' ') FROM glossary_keywords g "
@@ -39,7 +40,7 @@ async def up(engine: AsyncEngine):
                     uri TEXT NOT NULL,
                     content TEXT NOT NULL,
                     disclosure TEXT,
-                    keywords_text TEXT NOT NULL DEFAULT '',
+                    search_terms TEXT NOT NULL DEFAULT '',
                     priority INTEGER NOT NULL DEFAULT 0,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (domain, path)
@@ -90,7 +91,7 @@ async def up(engine: AsyncEngine):
                         uri,
                         content,
                         disclosure,
-                        keywords_text,
+                        search_terms,
                         tokenize = 'unicode61'
                     )
                     """
@@ -101,38 +102,60 @@ async def up(engine: AsyncEngine):
         if not is_postgres:
             await conn.execute(text("DELETE FROM search_documents_fts"))
 
-        await conn.execute(
-            text(
-                f"""
-                INSERT INTO search_documents (
-                    domain,
-                    path,
-                    node_uuid,
-                    memory_id,
-                    uri,
-                    content,
-                    disclosure,
-                    keywords_text,
-                    priority
+        raw_rows = (
+            await conn.execute(
+                text(
+                    f"""
+                    SELECT
+                        p.domain,
+                        p.path,
+                        e.child_uuid as node_uuid,
+                        m.id as memory_id,
+                        p.domain || '://' || p.path as uri,
+                        m.content,
+                        e.disclosure,
+                        {keyword_agg} as glossary_text,
+                        e.priority
+                    FROM paths p
+                    JOIN edges e ON p.edge_id = e.id
+                    JOIN memories m
+                      ON m.node_uuid = e.child_uuid
+                     AND m.deprecated = {false_val}
+                    """
                 )
-                SELECT
-                    p.domain,
-                    p.path,
-                    e.child_uuid,
-                    m.id,
-                    p.domain || '://' || p.path,
-                    m.content,
-                    e.disclosure,
-                    {keyword_agg},
-                    e.priority
-                FROM paths p
-                JOIN edges e ON p.edge_id = e.id
-                JOIN memories m
-                  ON m.node_uuid = e.child_uuid
-                 AND m.deprecated = {false_val}
-                """
             )
-        )
+        ).mappings().all()
+
+        for row in raw_rows:
+            search_terms = build_document_search_terms(
+                row["path"],
+                row["uri"],
+                row["content"],
+                row["disclosure"],
+                row["glossary_text"] or "",
+            )
+            await conn.execute(
+                text(
+                    """
+                    INSERT INTO search_documents (
+                        domain, path, node_uuid, memory_id, uri, content, disclosure, search_terms, priority
+                    ) VALUES (
+                        :domain, :path, :node_uuid, :memory_id, :uri, :content, :disclosure, :search_terms, :priority
+                    )
+                    """
+                ),
+                {
+                    "domain": row["domain"],
+                    "path": row["path"],
+                    "node_uuid": row["node_uuid"],
+                    "memory_id": row["memory_id"],
+                    "uri": row["uri"],
+                    "content": row["content"],
+                    "disclosure": row["disclosure"],
+                    "search_terms": search_terms,
+                    "priority": row["priority"],
+                }
+            )
 
         if not is_postgres:
             await conn.execute(
@@ -145,7 +168,7 @@ async def up(engine: AsyncEngine):
                         uri,
                         content,
                         disclosure,
-                        keywords_text
+                        search_terms
                     )
                     SELECT
                         domain,
@@ -154,10 +177,10 @@ async def up(engine: AsyncEngine):
                         uri,
                         content,
                         coalesce(disclosure, ''),
-                        keywords_text
+                        search_terms
                     FROM search_documents
                     """
                 )
             )
 
-    logger.info("Migration 009: created and backfilled search_documents FTS index")
+    logger.info("Migration 009: created and backfilled search_documents FTS index with jieba tokenization")

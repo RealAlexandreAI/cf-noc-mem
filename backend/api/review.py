@@ -807,7 +807,7 @@ async def rollback_group(node_uuid: str):
                             else:
                                 messages.append(f"Glossary keyword ('{b['keyword']}') already exists, skipped restore.")
 
-            await search.rebuild_search_documents(session=session)
+            await search.rebuild_all_search_documents(session=session)
 
         if not messages:
             messages.append("No rollback action required.")
