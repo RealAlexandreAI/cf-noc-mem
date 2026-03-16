@@ -1107,6 +1107,8 @@ async def search_memory(
             )
             lines.append(f"- [{item['name']}] {uri}")
             lines.append(f"  Priority: {item['priority']}")
+            if item.get("disclosure"):
+                lines.append(f"  Disclosure: {item['disclosure']}")
             lines.append(f"  {item['snippet']}")
             lines.append("")
 
