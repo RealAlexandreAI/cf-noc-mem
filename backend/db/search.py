@@ -269,7 +269,7 @@ class SearchIndexer:
                             sd.priority,
                             sd.content,
                             sd.disclosure,
-                            bm25(search_documents_fts, 2.5, 2.0, 1.0, 0.75) AS score
+                            bm25(search_documents_fts, 0.0, 2.5, 0.0, 2.0, 1.0, 1.0, 0.75) AS score
                         FROM search_documents AS sd
                         JOIN search_documents_fts
                           ON search_documents_fts.domain = sd.domain
