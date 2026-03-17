@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from api import review_router, browse_router, maintenance_router
 from auth import BearerTokenAuthMiddleware
-from db import get_db_client, close_db_client
+from db import get_db_manager, close_db
 from health import router as health_router
 
 
@@ -15,8 +15,8 @@ async def lifespan(app: FastAPI):
 
     # Initialize Database
     try:
-        db_client = get_db_client()
-        await db_client.init_db()
+        db_manager = get_db_manager()
+        await db_manager.init_db()
         print("Database initialized.")
     except Exception as e:
         print(f"Failed to initialize database: {e}")
@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
 
     # 关闭时
     print("Closing database connections...")
-    await close_db_client()
+    await close_db()
 
 
 app = FastAPI(

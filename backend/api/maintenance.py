@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from db import get_db_client
+from db import get_graph_service
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
 
@@ -15,8 +15,8 @@ async def get_orphans():
     Includes migration target paths for deprecated memories so the human can see
     where the memory used to live without clicking into each one.
     """
-    client = get_db_client()
-    return await client.get_all_orphan_memories()
+    graph = get_graph_service()
+    return await graph.get_all_orphan_memories()
 
 
 @router.get("/orphans/{memory_id}")
@@ -25,8 +25,8 @@ async def get_orphan_detail(memory_id: int):
     Get full detail of an orphan memory, including migration target's
     full content for diff comparison.
     """
-    client = get_db_client()
-    detail = await client.get_orphan_detail(memory_id)
+    graph = get_graph_service()
+    detail = await graph.get_orphan_detail(memory_id)
     if not detail:
         raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
     return detail
@@ -40,9 +40,9 @@ async def delete_orphan(memory_id: int):
     
     Safety: requires deprecated=True; active memories are never deleted.
     """
-    client = get_db_client()
+    graph = get_graph_service()
     try:
-        result = await client.permanently_delete_memory(memory_id)
+        result = await graph.permanently_delete_memory(memory_id)
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

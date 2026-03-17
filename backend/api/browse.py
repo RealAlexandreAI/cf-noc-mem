@@ -7,8 +7,8 @@ hierarchical browser. Every path is just a node with content and children.
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from db import get_db_client
-from db.sqlite_client import Path as PathModel, Edge as EdgeModel, ROOT_NODE_UUID
+from db import get_graph_service, get_glossary_service, get_db_manager
+from db.models import Path as PathModel, Edge as EdgeModel, ROOT_NODE_UUID
 from sqlalchemy import select
 
 router = APIRouter(prefix="/browse", tags=["browse"])
@@ -35,8 +35,8 @@ async def list_domains():
     """Return all domains that contain at least one root-level path."""
     from sqlalchemy import func, distinct
 
-    client = get_db_client()
-    async with client.session() as session:
+    db = get_db_manager()
+    async with db.session() as session:
         result = await session.execute(
             select(
                 PathModel.domain,
@@ -66,13 +66,13 @@ async def get_node(
     - Preview of all children (next level)
     - Breadcrumb trail for navigation
     """
-    client = get_db_client()
+    graph = get_graph_service()
     
     if not path:
         # Check if there is an actual memory stored at the root path
-        memory = await client.get_memory_by_path("", domain=domain)
+        memory = await graph.get_memory_by_path("", domain=domain)
         
-        children_raw = await client.get_children(
+        children_raw = await graph.get_children(
             ROOT_NODE_UUID,
             context_domain=domain,
             context_path=path,
@@ -97,12 +97,12 @@ async def get_node(
         breadcrumbs = [{"path": "", "label": "root"}]
     else:
         # Get the node itself
-        memory = await client.get_memory_by_path(path, domain=domain)
+        memory = await graph.get_memory_by_path(path, domain=domain)
         
         if not memory:
             raise HTTPException(status_code=404, detail=f"Path not found: {domain}://{path}")
         
-        children_raw = await client.get_children(
+        children_raw = await graph.get_children(
             memory["node_uuid"],
             context_domain=domain,
             context_path=path,
@@ -135,7 +135,7 @@ async def get_node(
     # Get all aliases (other paths pointing to the same node)
     aliases = []
     if memory.get("node_uuid") and memory["node_uuid"] != ROOT_NODE_UUID:
-        async with client.session() as session:
+        async with get_db_manager().session() as session:
             result = await session.execute(
                 select(PathModel.domain, PathModel.path)
                 .select_from(PathModel)
@@ -154,12 +154,13 @@ async def get_node(
     node_uuid = memory.get("node_uuid")
 
     if not nav_only:
+        _glossary = get_glossary_service()
         if node_uuid and node_uuid != ROOT_NODE_UUID:
-            glossary_keywords = await client.get_glossary_for_node(node_uuid)
+            glossary_keywords = await _glossary.get_glossary_for_node(node_uuid)
 
         # Get all glossary matches for the node content using Aho-Corasick
         if memory.get("content"):
-            matches_dict = await client.find_glossary_in_content(memory["content"])
+            matches_dict = await _glossary.find_glossary_in_content(memory["content"])
             if matches_dict:
                 glossary_matches = [
                     {"keyword": kw, "nodes": nodes}
@@ -196,16 +197,16 @@ async def update_node(
     """
     Update a node's content.
     """
-    client = get_db_client()
+    graph = get_graph_service()
     
     # Check exists
-    memory = await client.get_memory_by_path(path, domain=domain)
+    memory = await graph.get_memory_by_path(path, domain=domain)
     if not memory:
         raise HTTPException(status_code=404, detail=f"Path not found: {domain}://{path}")
     
     # Update (creates new version if content changed, updates path metadata otherwise)
     try:
-        result = await client.update_memory(
+        result = await graph.update_memory(
             path=path,
             domain=domain,
             content=body.content,
@@ -226,8 +227,8 @@ async def update_node(
 @router.get("/glossary")
 async def get_glossary():
     """Get all glossary keywords with their associated nodes."""
-    client = get_db_client()
-    raw_entries = await client.get_all_glossary()
+    glossary = get_glossary_service()
+    raw_entries = await glossary.get_all_glossary()
     
     return {"glossary": raw_entries}
 
@@ -237,9 +238,9 @@ async def add_glossary_keyword(body: GlossaryAdd):
     """Bind a keyword to a node."""
     # Human-facing direct edit endpoint: intentionally bypasses changeset/review.
     # The review queue tracks AI-authored mutations only.
-    client = get_db_client()
+    glossary = get_glossary_service()
     try:
-        result = await client.add_glossary_keyword(body.keyword, body.node_uuid)
+        result = await glossary.add_glossary_keyword(body.keyword, body.node_uuid)
         return {"success": True, **result}
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -250,8 +251,8 @@ async def remove_glossary_keyword(body: GlossaryRemove):
     """Remove a keyword binding from a node."""
     # Human-facing direct edit endpoint: intentionally bypasses changeset/review.
     # The review queue tracks AI-authored mutations only.
-    client = get_db_client()
-    result = await client.remove_glossary_keyword(body.keyword, body.node_uuid)
+    glossary = get_glossary_service()
+    result = await glossary.remove_glossary_keyword(body.keyword, body.node_uuid)
     if not result.get("success"):
         raise HTTPException(status_code=404, detail="Keyword binding not found")
     return {"success": True}

@@ -3,7 +3,7 @@ from typing import Dict
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine
 from sqlalchemy import inspect as sa_inspect
-from ..sqlite_client import Node, Memory, Edge, ROOT_NODE_UUID
+from ..models import Node, Memory, Edge, ROOT_NODE_UUID
 
 async def up(engine: AsyncEngine):
     """

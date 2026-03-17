@@ -1,7 +1,7 @@
 from typing import Optional, Set
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine
-from ..sqlite_client import Edge, Path
+from ..models import Edge, Path
 
 
 async def up(engine: AsyncEngine):
