@@ -247,7 +247,11 @@ async def _fetch_and_format_memory(uri: str) -> str:
             lines_to_add = []
             for kw, nodes in sorted(glossary_matches.items()):
                 # Filter out the current memory itself from the glossary jumps
-                filtered_nodes = [n for n in nodes if n["node_uuid"] != current_node_uuid]
+                # Also filter out unlinked nodes since the LLM cannot read them via MCP
+                filtered_nodes = [
+                    n for n in nodes 
+                    if n["node_uuid"] != current_node_uuid and not n["uri"].startswith("unlinked://")
+                ]
                 if filtered_nodes:
                     uris = ", ".join(n["uri"] for n in filtered_nodes)
                     lines_to_add.append(f"- @{kw} -> {uris}")
