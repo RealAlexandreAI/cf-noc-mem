@@ -244,17 +244,25 @@ async def _fetch_and_format_memory(uri: str) -> str:
         if glossary_matches:
             current_node_uuid = memory["node_uuid"]
             
+            # Invert mapping: URI -> list of keywords to save tokens since URIs are much longer than keywords
+            uri_to_keywords = {}
+            for kw, nodes in glossary_matches.items():
+                for n in nodes:
+                    if n["node_uuid"] == current_node_uuid or n["uri"].startswith("unlinked://"):
+                        continue
+                    uri = n["uri"]
+                    if uri not in uri_to_keywords:
+                        uri_to_keywords[uri] = []
+                    if kw not in uri_to_keywords[uri]:
+                        uri_to_keywords[uri].append(kw)
+            
             lines_to_add = []
-            for kw, nodes in sorted(glossary_matches.items()):
-                # Filter out the current memory itself from the glossary jumps
-                # Also filter out unlinked nodes since the LLM cannot read them via MCP
-                filtered_nodes = [
-                    n for n in nodes 
-                    if n["node_uuid"] != current_node_uuid and not n["uri"].startswith("unlinked://")
-                ]
-                if filtered_nodes:
-                    uris = ", ".join(n["uri"] for n in filtered_nodes)
-                    lines_to_add.append(f"- @{kw} -> {uris}")
+            if uri_to_keywords:
+                # Sort by number of keywords (descending), then alphabetically by URI for stable output
+                for uri, kws in sorted(uri_to_keywords.items(), key=lambda x: (-len(x[1]), x[0])):
+                    sorted_kws = sorted(kws)
+                    kw_str = ", ".join(f"@{k}" for k in sorted_kws)
+                    lines_to_add.append(f"- {kw_str} -> {uri}")
             
             if lines_to_add:
                 lines.append("=" * 60)
