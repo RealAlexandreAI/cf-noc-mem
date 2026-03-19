@@ -8,7 +8,7 @@
 ![Feature](https://img.shields.io/badge/feature-Long--Term%20Memory-success.svg)
 ![Core](https://img.shields.io/badge/core-SQLite%20|%20PostgreSQL-blue.svg)
 
-[中文版](README.md)
+[中文版](README.md) | [Backend Testing Guide (CN)](docs/testing.md)
 
 ---
 

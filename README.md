@@ -9,7 +9,7 @@
 ![Feature](https://img.shields.io/badge/feature-Long--Term%20Memory-success.svg)
 ![Core](https://img.shields.io/badge/core-SQLite%20|%20PostgreSQL-blue.svg)
 
-[English Version](README_EN.md)
+[English Version](README_EN.md) | [后端测试说明](docs/testing.md)
 
 ---
 
