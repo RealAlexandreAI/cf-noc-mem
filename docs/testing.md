@@ -39,24 +39,49 @@
 
 安装后端测试依赖：
 
+**Windows (PowerShell):**
+```powershell
+.\.venv\Scripts\python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+```
+
+**Linux/macOS:**
 ```bash
 .venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 ```
 
 运行全部后端测试：
 
+**Windows (PowerShell):**
+```powershell
+.\.venv\Scripts\pytest backend/tests
+```
+
+**Linux/macOS:**
 ```bash
 .venv/bin/pytest backend/tests
 ```
 
 带覆盖率运行：
 
+**Windows (PowerShell):**
+```powershell
+.\.venv\Scripts\pytest backend/tests --cov=backend --cov-report=term-missing
+```
+
+**Linux/macOS:**
 ```bash
 .venv/bin/pytest backend/tests --cov=backend --cov-report=term-missing
 ```
 
 如果想单独验证 PostgreSQL 路径，可以显式指定：
 
+**Windows (PowerShell):**
+```powershell
+$env:TEST_DATABASE_URL="postgresql+asyncpg://user:password@127.0.0.1:5432/nocturne_memory?ssl=disable"
+.\.venv\Scripts\pytest backend/tests/service backend/tests/api -q
+```
+
+**Linux/macOS:**
 ```bash
 export TEST_DATABASE_URL='postgresql+asyncpg://user:password@127.0.0.1:5432/nocturne_memory?ssl=disable'
 .venv/bin/pytest backend/tests/service backend/tests/api -q
@@ -75,4 +100,4 @@ export TEST_DATABASE_URL='postgresql+asyncpg://user:password@127.0.0.1:5432/noct
 执行内容：
 
 1. SQLite 路径下，按 Python `3.10` / `3.12` 矩阵运行 `backend/tests`
-2. 在 `main` 分支或手动触发时，额外跑 PostgreSQL smoke
+2. 额外跑 PostgreSQL smoke
