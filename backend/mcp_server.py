@@ -636,11 +636,12 @@ async def create_memory(
                     Use "core://" or "writer://" for root level in that domain
                     parent_uri MUST be an existing node, or it will cause an ERROR.
         content: Memory content
-        priority: **Retrieval Priority** (lower = higher priority, min 0).
-                    *   优先度决定了回忆时记忆显示的顺序，以及冲突解决时的优先级。
-                    *   先参考**当前环境中所有可见记忆的 priority**。
-                    *   **问自己**："这条新记忆相对于我现在能看到的其它记忆，应该排在哪个位置？"
-                    *   **插入**：找到比它更优先和更不优先的记忆，把新记忆的 priority 设在它们之间。
+        priority: **Relative Retrieval Priority** (lower number = retrieved first, min 0).
+                    Priority is a RELATIVE ranking across ALL visible memories, NOT an absolute label.
+                    *   **禁止**把所有记忆都设成同一个数字（如全部设为0或1），那等于没有排序。
+                    *   **正确做法**：先观察当前视野中所有其它记忆的 priority 值，
+                        然后为新记忆选一个能体现其相对重要性的数字，插入到合适的位置。
+                    *   例：视野中已有 priority 1, 3, 5 的记忆，新记忆比3重要但不如1，就设为2。
         title: Optional title. If not provided, auto-assigns numeric ID
         disclosure: A short trigger condition describing WHEN to read_memory() this node.
                     Think: "In what specific situation would I need to know this?"
@@ -723,8 +724,9 @@ async def update_memory(
         old_string: [Patch mode] Text to find in existing content (must be unique)
         new_string: [Patch mode] Text to replace old_string with. Use "" to delete a section.
         append: [Append mode] Text to append to the end of existing content
-        priority: New priority **for this specific URI/edge** (None = keep existing).
-                  Priority is bound to the path (edge), NOT the memory content.
+        priority: New **relative** priority **for this specific URI/edge** (None = keep existing).
+                  Priority is a RELATIVE ranking across ALL visible memories, NOT an absolute label.
+                  It is bound to the path (edge), NOT the memory content.
                   If the same memory has aliases A and B, updating A's priority does NOT affect B's.
         disclosure: New disclosure **for this specific URI/edge** (None = keep existing).
                     Same edge-binding rule as priority.
@@ -907,11 +909,17 @@ async def add_alias(
     Aliases can even cross domains (e.g., link a writer draft to a core memory).
     新增别名时系统会自动在其下级联映射所有子树，原路径保持不变。
 
+    Each alias is an independent "lens" into the same memory.
+    Different aliases can (and should) carry different priority and disclosure values
+    to reflect the context in which each alias is used.
+
     Args:
         new_uri: New URI to create (alias)
         target_uri: Existing URI to alias
-        priority: Retrieval priority for this specific alias context (lower = higher priority). 优先度决定了回忆时记忆显示的顺序。
-        disclosure: Disclosure condition for this specific alias context
+        priority: **Relative** retrieval priority for THIS alias path (lower = higher priority, default 0).
+                  Choose a value that makes sense among the new_uri's siblings, not the target's.
+        disclosure: Disclosure condition for THIS alias path (default None).
+                    Set it to describe when this particular alias context should surface.
 
     Returns:
         Success message
@@ -1117,7 +1125,7 @@ async def search_memory(
             uri = item.get(
                 "uri", make_uri(item.get("domain", DEFAULT_DOMAIN), item["path"])
             )
-            lines.append(f"- [{item['name']}] {uri}")
+            lines.append(f"- {uri}")
             lines.append(f"  Priority: {item['priority']}")
             if item.get("disclosure"):
                 lines.append(f"  Disclosure: {item['disclosure']}")
