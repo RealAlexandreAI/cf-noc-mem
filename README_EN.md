@@ -17,21 +17,21 @@
 <table>
 <tr>
 <td align="center">
-<a href="https://misaligned.top/memory"><img src="docs/images/FireShot%20Capture%20083%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
+<a href="docs/images/FireShot%20Capture%20083%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png"><img src="docs/images/FireShot%20Capture%20083%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
 <br/><sub><b>Memory Explorer — Browse the full memory tree at a glance</b></sub>
 </td>
 <td align="center">
-<a href="https://misaligned.top/memory"><img src="docs/images/FireShot%20Capture%20084%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
+<a href="docs/images/FireShot%20Capture%20084%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png"><img src="docs/images/FireShot%20Capture%20084%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
 <br/><sub><b>Memory Detail — Edit content, metadata & trigger conditions</b></sub>
 </td>
 </tr>
 <tr>
 <td align="center">
-<a href="https://misaligned.top/memory"><img src="docs/images/FireShot%20Capture%20085%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
+<a href="docs/images/FireShot%20Capture%20085%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png"><img src="docs/images/FireShot%20Capture%20085%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
 <br/><sub><b>Review & Audit — Visual diff, one-click accept or rollback</b></sub>
 </td>
 <td align="center">
-<a href="https://misaligned.top/memory"><img src="docs/images/FireShot%20Capture%20082%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
+<a href="docs/images/FireShot%20Capture%20082%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png"><img src="docs/images/FireShot%20Capture%20082%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
 <br/><sub><b>Version Safety Net — Every AI operation auto-backed up; cleanup requires human confirmation</b></sub>
 </td>
 </tr>

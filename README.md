@@ -18,21 +18,21 @@
 <table>
 <tr>
 <td align="center">
-<a href="https://misaligned.top/memory"><img src="docs/images/FireShot%20Capture%20083%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
+<a href="docs/images/FireShot%20Capture%20083%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png"><img src="docs/images/FireShot%20Capture%20083%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
 <br/><sub><b>Memory Explorer — 树状浏览，所有记忆一目了然</b></sub>
 </td>
 <td align="center">
-<a href="https://misaligned.top/memory"><img src="docs/images/FireShot%20Capture%20084%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
+<a href="docs/images/FireShot%20Capture%20084%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png"><img src="docs/images/FireShot%20Capture%20084%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
 <br/><sub><b>Memory Detail — 实时编辑内容、元数据与触发条件</b></sub>
 </td>
 </tr>
 <tr>
 <td align="center">
-<a href="https://misaligned.top/memory"><img src="docs/images/FireShot%20Capture%20085%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
+<a href="docs/images/FireShot%20Capture%20085%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png"><img src="docs/images/FireShot%20Capture%20085%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
 <br/><sub><b>Review & Audit — 可视化 diff，一键接受或回滚</b></sub>
 </td>
 <td align="center">
-<a href="https://misaligned.top/memory"><img src="docs/images/FireShot%20Capture%20082%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
+<a href="docs/images/FireShot%20Capture%20082%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png"><img src="docs/images/FireShot%20Capture%20082%20-%20Nocturne%20Memory%20Review%20-%20%5Blocalhost%5D.png" width="400" /></a>
 <br/><sub><b>版本安全网 — AI 每次操作自动备份，清理需人类确认</b></sub>
 </td>
 </tr>
