@@ -263,7 +263,11 @@ CORE_MEMORY_URIS=core://agent,core://my_user,core://agent/my_user
 
 ### 3. Configure MCP Client
 
-Add the following to your AI client's (Claude Desktop, Cursor, Windsurf, OpenCode, etc.) MCP configuration:
+Choose the configuration method that matches your AI client:
+
+#### Option A: General Configuration 
+
+Add the following to your AI client's MCP configuration (replace with your absolute path):
 
 ```json
 {
@@ -274,20 +278,38 @@ Add the following to your AI client's (Claude Desktop, Cursor, Windsurf, OpenCod
         "C:/absolute/path/to/nocturne_memory/backend/mcp_server.py"
       ]
     }
-
   }
 }
 ```
 > **Windows users**: Use forward slashes `/` or double backslashes `\\` in paths.
 
-### ⚠️ Special Fix for Antigravity on Windows
-Due to a stdin/stdout newline handling bug (CRLF vs LF) in Antigravity IDE on Windows, running server.py directly will throw errors.
-You **must** point `args` to `backend/mcp_wrapper.py`:
+#### Option B: Claude Code Users
+
+Replace the path in the command below with your absolute path, then execute it in your terminal or PowerShell:
+
+```powershell
+claude mcp add-json -s user nocturne-memory '{"type":"stdio","command":"python","args":["C:/absolute/path/to/nocturne_memory/backend/mcp_server.py"]}'
+claude mcp list
+```
+
+> When you see `nocturne-memory` with a `Connected` status, the configuration is successful.
+
+#### ⚠️ Special Fix for Antigravity on Windows
+
+Due to a stdin/stdout newline handling bug (CRLF vs LF) in Antigravity IDE on Windows, running `server.py` directly will throw errors.
+If you are using Antigravity on Windows, you **must** point the `args` to `backend/mcp_wrapper.py`:
 
 ```json
-"args": [
-  "C:/path/to/nocturne_memory/backend/mcp_wrapper.py"
-]
+{
+  "mcpServers": {
+    "nocturne_memory": {
+      "command": "python",
+      "args": [
+        "C:/absolute/path/to/nocturne_memory/backend/mcp_wrapper.py"
+      ]
+    }
+  }
+}
 ```
 
 ### 4. Configure System Prompt (Required)

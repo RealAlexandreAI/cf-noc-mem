@@ -264,7 +264,11 @@ CORE_MEMORY_URIS=core://agent,core://my_user,core://agent/my_user
 
 ### 3. 配置 MCP 客户端
 
-在你的 AI 客户端（Claude Desktop, Cursor, Windsurf, OpenCode 等）的 MCP 配置中加入：
+根据你使用的 AI 客户端，选择对应的配置方式：
+
+#### 方案 A：通用配置
+
+在你的 AI 客户端的 MCP 配置中加入以下内容（注意替换为你的绝对路径）：
 
 ```json
 {
@@ -275,20 +279,38 @@ CORE_MEMORY_URIS=core://agent,core://my_user,core://agent/my_user
         "C:/absolute/path/to/nocturne_memory/backend/mcp_server.py"
       ]
     }
-
   }
 }
 ```
-> **Windows 用户**：路径使用正斜杠 `/` 或双反斜杠 `\\`。
+> **Windows 用户**：路径请使用正斜杠 `/` 或双反斜杠 `\\`。
 
-### ⚠️ Special Fix for Antigravity on Windows
-由于 Antigravity IDE 在 Windows 上的 stdin/stdout 换行符处理 bug（CRLF vs LF），直接运行 server.py 会报错。
-**必须**将 `args` 指向 `backend/mcp_wrapper.py`：
+#### 方案 B：Claude Code 用户
+
+把下面命令里的路径改成你的绝对路径，然后在终端或 PowerShell 中执行：
+
+```powershell
+claude mcp add-json -s user nocturne-memory '{"type":"stdio","command":"python","args":["C:/absolute/path/to/nocturne_memory/backend/mcp_server.py"]}'
+claude mcp list
+```
+
+> 看到 `nocturne-memory` 并且状态为 `Connected`，就说明配置成功了。
+
+#### ⚠️ Antigravity 客户端特别说明 (Windows)
+
+由于 Antigravity IDE 在 Windows 上的换行符处理存在 bug（CRLF vs LF），直接运行 `server.py` 会报错。
+如果你使用 Antigravity (Windows)，**必须**将配置中的 `args` 指向 `backend/mcp_wrapper.py`：
 
 ```json
-"args": [
-  "C:/path/to/nocturne_memory/backend/mcp_wrapper.py"
-]
+{
+  "mcpServers": {
+    "nocturne_memory": {
+      "command": "python",
+      "args": [
+        "C:/absolute/path/to/nocturne_memory/backend/mcp_wrapper.py"
+      ]
+    }
+  }
+}
 ```
 
 ### 4. 配置 System Prompt（必须配置）
