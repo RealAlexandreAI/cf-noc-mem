@@ -140,14 +140,16 @@ class Edge(Base):
 
 
 class Path(Base):
-    """Materialized URI cache: (domain, path_string) → edge.
+    """Materialized URI cache: (namespace, domain, path_string) → edge.
 
     The source of truth for tree structure is the edges table.
     Paths are a routing convenience for URI resolution.
+    Namespace enables multi-agent memory isolation within a single instance.
     """
 
     __tablename__ = "paths"
 
+    namespace = Column(String(64), primary_key=True, default="")
     domain = Column(String(64), primary_key=True, default="core")
     path = Column(String(512), primary_key=True)
     edge_id = Column(Integer, ForeignKey("edges.id"), nullable=True)
@@ -174,10 +176,11 @@ class GlossaryKeyword(Base):
         ForeignKey("nodes.uuid", ondelete="CASCADE"),
         nullable=False,
     )
+    namespace = Column(String(64), nullable=False, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (
-        UniqueConstraint("keyword", "node_uuid", name="uq_glossary_keyword_node"),
+        UniqueConstraint("keyword", "node_uuid", "namespace", name="uq_glossary_keyword_node"),
     )
 
     node = relationship("Node")
@@ -188,6 +191,7 @@ class SearchDocument(Base):
 
     __tablename__ = "search_documents"
 
+    namespace = Column(String(64), primary_key=True, default="")
     domain = Column(String(64), primary_key=True, default="core")
     path = Column(String(512), primary_key=True)
     node_uuid = Column(

@@ -9,7 +9,8 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from db import get_graph_service, get_glossary_service, get_db_manager
 from db.models import Path as PathModel, Edge as EdgeModel, ROOT_NODE_UUID
-from sqlalchemy import select
+from db.namespace import get_namespace
+from sqlalchemy import select, distinct
 
 router = APIRouter(prefix="/browse", tags=["browse"])
 
@@ -30,6 +31,23 @@ class GlossaryRemove(BaseModel):
     node_uuid: str
 
 
+@router.get("/namespaces")
+async def list_namespaces():
+    """Return all distinct namespaces that exist in the paths table.
+
+    Used by the Admin Dashboard namespace selector so the user can switch
+    between agent memory spaces without knowing the exact strings upfront.
+    An empty-string namespace is returned as "" and corresponds to the
+    default (single-agent) namespace.
+    """
+    db = get_db_manager()
+    async with db.session() as session:
+        result = await session.execute(
+            select(distinct(PathModel.namespace)).order_by(PathModel.namespace)
+        )
+        return [row[0] for row in result.all()]
+
+
 @router.get("/domains")
 async def list_domains():
     """Return all domains that contain at least one root-level path."""
@@ -42,6 +60,7 @@ async def list_domains():
                 PathModel.domain,
                 func.count(distinct(PathModel.path)).label("node_count"),
             )
+            .where(PathModel.namespace == get_namespace())
             .where(~PathModel.path.contains("/"))
             .group_by(PathModel.domain)
             .order_by(PathModel.domain)
@@ -70,12 +89,13 @@ async def get_node(
     
     if not path:
         # Check if there is an actual memory stored at the root path
-        memory = await graph.get_memory_by_path("", domain=domain)
+        memory = await graph.get_memory_by_path("", domain=domain, namespace=get_namespace())
         
         children_raw = await graph.get_children(
             ROOT_NODE_UUID,
             context_domain=domain,
             context_path=path,
+            namespace=get_namespace()
         )
         
         if memory:
@@ -97,7 +117,7 @@ async def get_node(
         breadcrumbs = [{"path": "", "label": "root"}]
     else:
         # Get the node itself
-        memory = await graph.get_memory_by_path(path, domain=domain)
+        memory = await graph.get_memory_by_path(path, domain=domain, namespace=get_namespace())
         
         if not memory:
             raise HTTPException(status_code=404, detail=f"Path not found: {domain}://{path}")
@@ -106,6 +126,7 @@ async def get_node(
             memory["node_uuid"],
             context_domain=domain,
             context_path=path,
+            namespace=get_namespace()
         )
         
         # Build breadcrumbs
@@ -140,6 +161,7 @@ async def get_node(
                 select(PathModel.domain, PathModel.path)
                 .select_from(PathModel)
                 .join(EdgeModel, PathModel.edge_id == EdgeModel.id)
+                .where(PathModel.namespace == get_namespace())
                 .where(EdgeModel.child_uuid == memory["node_uuid"])
             )
             aliases = [
@@ -156,11 +178,11 @@ async def get_node(
     if not nav_only:
         _glossary = get_glossary_service()
         if node_uuid and node_uuid != ROOT_NODE_UUID:
-            glossary_keywords = await _glossary.get_glossary_for_node(node_uuid)
+            glossary_keywords = await _glossary.get_glossary_for_node(node_uuid, namespace=get_namespace())
 
         # Get all glossary matches for the node content using Aho-Corasick
         if memory.get("content"):
-            matches_dict = await _glossary.find_glossary_in_content(memory["content"])
+            matches_dict = await _glossary.find_glossary_in_content(memory["content"], namespace=get_namespace())
             if matches_dict:
                 glossary_matches = [
                     {"keyword": kw, "nodes": nodes}
@@ -200,7 +222,7 @@ async def update_node(
     graph = get_graph_service()
     
     # Check exists
-    memory = await graph.get_memory_by_path(path, domain=domain)
+    memory = await graph.get_memory_by_path(path, domain=domain, namespace=get_namespace())
     if not memory:
         raise HTTPException(status_code=404, detail=f"Path not found: {domain}://{path}")
     
@@ -212,6 +234,7 @@ async def update_node(
             content=body.content,
             priority=body.priority,
             disclosure=body.disclosure,
+            namespace=get_namespace(),
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -228,7 +251,7 @@ async def update_node(
 async def get_glossary():
     """Get all glossary keywords with their associated nodes."""
     glossary = get_glossary_service()
-    raw_entries = await glossary.get_all_glossary()
+    raw_entries = await glossary.get_all_glossary(namespace=get_namespace(), search_all_namespaces=False)
     
     return {"glossary": raw_entries}
 
@@ -240,7 +263,7 @@ async def add_glossary_keyword(body: GlossaryAdd):
     # The review queue tracks AI-authored mutations only.
     glossary = get_glossary_service()
     try:
-        result = await glossary.add_glossary_keyword(body.keyword, body.node_uuid)
+        result = await glossary.add_glossary_keyword(body.keyword, body.node_uuid, namespace=get_namespace())
         return {"success": True, **result}
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -252,7 +275,7 @@ async def remove_glossary_keyword(body: GlossaryRemove):
     # Human-facing direct edit endpoint: intentionally bypasses changeset/review.
     # The review queue tracks AI-authored mutations only.
     glossary = get_glossary_service()
-    result = await glossary.remove_glossary_keyword(body.keyword, body.node_uuid)
+    result = await glossary.remove_glossary_keyword(body.keyword, body.node_uuid, namespace=get_namespace())
     if not result.get("success"):
         raise HTTPException(status_code=404, detail="Keyword binding not found")
     return {"success": True}

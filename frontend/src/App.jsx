@@ -1,15 +1,108 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
-import { ShieldCheck, Database, LayoutGrid, Sparkles, AlertCircle } from 'lucide-react';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
+import { ShieldCheck, Database, LayoutGrid, Sparkles, AlertCircle, Layers } from 'lucide-react';
 import clsx from 'clsx';
 
 import ReviewPage from './features/review/ReviewPage';
 import MemoryBrowser from './features/memory/MemoryBrowser';
 import MaintenancePage from './features/maintenance/MaintenancePage';
 import TokenAuth from './components/TokenAuth';
-import { AUTH_ERROR_EVENT } from './lib/api';
+import { AUTH_ERROR_EVENT, getNamespaces } from './lib/api';
+
+// ---------------------------------------------------------------------------
+// NamespaceSelector — lets the user switch between agent namespaces.
+//
+// The selector is always visible so that users can manually enter a namespace
+// even before any memories have been written (e.g. after a fresh deployment).
+// Known namespaces fetched from the DB are offered as dropdown options, but
+// the user can also type a custom value into the input box.
+//
+// Selected namespace is stored in localStorage; the axios interceptor in
+// api.js attaches it as X-Namespace on every request.
+// ---------------------------------------------------------------------------
+function NamespaceSelector() {
+  const [knownNamespaces, setKnownNamespaces] = useState([]);
+  const [selected, setSelected] = useState(
+    () => localStorage.getItem('selected_namespace') ?? ''
+  );
+  const [inputValue, setInputValue] = useState(
+    () => localStorage.getItem('selected_namespace') ?? ''
+  );
+  const [showInput, setShowInput] = useState(false);
+
+  useEffect(() => {
+    getNamespaces()
+      .then(nsList => setKnownNamespaces(nsList.filter(ns => ns !== '')))
+      .catch(() => setKnownNamespaces([]));
+  }, []);
+
+  const applyNamespace = (ns) => {
+    const trimmed = ns.trim();
+    setSelected(trimmed);
+    setInputValue(trimmed);
+    if (trimmed) {
+      localStorage.setItem('selected_namespace', trimmed);
+    } else {
+      localStorage.removeItem('selected_namespace');
+    }
+    window.location.reload();
+  };
+
+  const handleSelectChange = (e) => {
+    const val = e.target.value;
+    if (val === '__custom__') {
+      setShowInput(true);
+      return;
+    }
+    applyNamespace(val);
+  };
+
+  const handleInputKeyDown = (e) => {
+    if (e.key === 'Enter') applyNamespace(inputValue);
+    if (e.key === 'Escape') setShowInput(false);
+  };
+
+  const activeLabel = selected || '(default)';
+
+  return (
+    <div className="flex items-center gap-2 ml-auto text-sm">
+      <Layers size={14} className="text-slate-400 flex-shrink-0" />
+      {showInput ? (
+        <input
+          autoFocus
+          type="text"
+          value={inputValue}
+          onChange={e => setInputValue(e.target.value)}
+          onKeyDown={handleInputKeyDown}
+          onBlur={() => setShowInput(false)}
+          placeholder="namespace (Enter to apply)"
+          className="bg-slate-800 border border-indigo-500 text-slate-200 rounded px-2 py-1 text-xs w-40 focus:outline-none"
+        />
+      ) : (
+        <select
+          value={selected}
+          onChange={handleSelectChange}
+          className="bg-slate-800 border border-slate-700 text-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          title={`Current namespace: ${activeLabel}`}
+        >
+          <option value="">(default)</option>
+          {knownNamespaces.map(ns => (
+            <option key={ns} value={ns}>{ns}</option>
+          ))}
+          {selected && !knownNamespaces.includes(selected) && (
+            <option key={selected} value={selected}>{selected}</option>
+          )}
+          <option value="__custom__">+ enter custom…</option>
+        </select>
+      )}
+    </div>
+  );
+}
 
 function Layout() {
+  const location = useLocation();
+  const isReviewPage = location.pathname.startsWith('/review');
+
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200">
       {/* Top Navigation Bar */}
@@ -53,6 +146,8 @@ function Layout() {
             Brain Cleanup
           </NavLink>
         </nav>
+
+        {!isReviewPage && <NamespaceSelector />}
       </div>
 
       {/* Main Area */}

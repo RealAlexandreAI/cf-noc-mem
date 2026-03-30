@@ -44,7 +44,7 @@ class GlossaryService:
         self._fingerprint = None
 
     async def add_glossary_keyword(
-        self, keyword: str, node_uuid: str
+        self, keyword: str, node_uuid: str, namespace: str = ""
     ) -> Dict[str, Any]:
         """Bind a glossary keyword to a node."""
         keyword = keyword.strip()
@@ -56,7 +56,7 @@ class GlossaryService:
             if not node:
                 raise ValueError(f"Node '{node_uuid}' not found")
 
-            entry = GlossaryKeyword(keyword=keyword, node_uuid=node_uuid)
+            entry = GlossaryKeyword(keyword=keyword, node_uuid=node_uuid, namespace=namespace)
             session.add(entry)
 
             try:
@@ -65,7 +65,7 @@ class GlossaryService:
                 raise ValueError(f"Keyword '{keyword}' is already bound to this node")
 
             await self._search.refresh_search_documents_for_node(
-                node_uuid, session=session
+                node_uuid, session=session, namespace=namespace, refresh_all_namespaces=True
             )
 
             row_after = serialize_row(entry)
@@ -79,7 +79,7 @@ class GlossaryService:
             }
 
     async def remove_glossary_keyword(
-        self, keyword: str, node_uuid: str
+        self, keyword: str, node_uuid: str, namespace: str = ""
     ) -> Dict[str, Any]:
         """Remove a glossary keyword binding."""
         keyword = keyword.strip()
@@ -88,6 +88,7 @@ class GlossaryService:
                 select(GlossaryKeyword).where(
                     GlossaryKeyword.keyword == keyword,
                     GlossaryKeyword.node_uuid == node_uuid,
+                    GlossaryKeyword.namespace == namespace,
                 )
             )
             entry = existing.scalar_one_or_none()
@@ -107,7 +108,7 @@ class GlossaryService:
             )
 
             await self._search.refresh_search_documents_for_node(
-                node_uuid, session=session
+                node_uuid, session=session, namespace=namespace, refresh_all_namespaces=True
             )
 
             return {
@@ -116,53 +117,76 @@ class GlossaryService:
                 "rows_after": {"glossary_keywords": []},
             }
 
-    async def get_glossary_for_node(self, node_uuid: str) -> List[str]:
+    async def get_glossary_for_node(self, node_uuid: str, namespace: str = "") -> List[str]:
         """Get all keywords bound to a node."""
         async with self._session() as session:
             result = await session.execute(
                 select(GlossaryKeyword.keyword)
-                .where(GlossaryKeyword.node_uuid == node_uuid)
+                .where(
+                    GlossaryKeyword.node_uuid == node_uuid,
+                    GlossaryKeyword.namespace == namespace
+                )
                 .order_by(GlossaryKeyword.keyword)
             )
             return [row[0] for row in result.all()]
 
-    async def get_all_glossary(self) -> List[Dict[str, Any]]:
+    async def get_all_glossary(self, namespace: str = "", search_all_namespaces: bool = False) -> List[Dict[str, Any]]:
         """Get all glossary entries grouped by keyword, with node URIs."""
         async with self._session() as session:
-            result = await session.execute(
+            stmt = (
                 select(
                     GlossaryKeyword.keyword,
                     GlossaryKeyword.node_uuid,
+                    GlossaryKeyword.namespace,
                     Path.domain,
                     Path.path,
                     Memory.content,
                 )
                 .select_from(GlossaryKeyword)
                 .join(Node, Node.uuid == GlossaryKeyword.node_uuid)
-                .outerjoin(Edge, Edge.child_uuid == Node.uuid)
-                .outerjoin(Path, Path.edge_id == Edge.id)
                 .outerjoin(
-                    Memory,
-                    and_(
-                        Memory.node_uuid == Node.uuid,
-                        Memory.deprecated == False,
-                    ),
+                    Edge, Edge.child_uuid == Node.uuid
                 )
-                .order_by(GlossaryKeyword.keyword, Path.domain, Path.path)
             )
 
-            groups: Dict[str, Dict[str, Dict[str, str]]] = defaultdict(dict)
+            if not search_all_namespaces:
+                stmt = stmt.outerjoin(
+                    Path,
+                    and_(
+                        Path.edge_id == Edge.id,
+                        Path.namespace == namespace,
+                    ),
+                ).where(GlossaryKeyword.namespace == namespace)
+            else:
+                stmt = stmt.outerjoin(
+                    Path,
+                    Path.edge_id == Edge.id,
+                )
 
-            for keyword, node_uuid, domain, path, content in result.all():
-                if node_uuid not in groups[keyword]:
+            stmt = stmt.outerjoin(
+                Memory,
+                and_(
+                    Memory.node_uuid == Node.uuid,
+                    Memory.deprecated == False,
+                ),
+            ).order_by(GlossaryKeyword.keyword, Path.domain, Path.path)
+
+            result = await session.execute(stmt)
+
+            groups: Dict[str, Dict[tuple, Dict[str, Any]]] = defaultdict(dict)
+
+            for keyword, node_uuid, namespace, domain, path, content in result.all():
+                key = (node_uuid, namespace, domain, path)
+                if key not in groups[keyword]:
                     snippet = ""
                     if content:
                         snippet = content[:100].replace("\n", " ")
                         if len(content) > 100:
                             snippet += "..."
                     uri = f"{domain}://{path}" if domain is not None and path is not None else f"unlinked://{node_uuid}"
-                    groups[keyword][node_uuid] = {
+                    groups[keyword][key] = {
                         "node_uuid": node_uuid,
+                        "namespace": namespace,
                         "uri": uri,
                         "content_snippet": snippet,
                     }
@@ -173,7 +197,7 @@ class GlossaryService:
             ]
 
     async def find_glossary_in_content(
-        self, content: str
+        self, content: str, namespace: str = ""
     ) -> Dict[str, List[Dict[str, str]]]:
         """Scan content for glossary keywords using Aho-Corasick.
 
@@ -237,9 +261,18 @@ class GlossaryService:
                     Path.path,
                 )
                 .select_from(GlossaryKeyword)
-                .outerjoin(Edge, Edge.child_uuid == GlossaryKeyword.node_uuid)
-                .outerjoin(Path, Path.edge_id == Edge.id)
-                .where(GlossaryKeyword.keyword.in_(found_keywords))
+                .join(Edge, Edge.child_uuid == GlossaryKeyword.node_uuid)
+                .join(
+                    Path,
+                    and_(
+                        Path.edge_id == Edge.id,
+                        Path.namespace == namespace,
+                    ),
+                )
+                .where(
+                    GlossaryKeyword.keyword.in_(found_keywords),
+                    GlossaryKeyword.namespace == namespace
+                )
                 .order_by(GlossaryKeyword.keyword, Path.domain, Path.path)
             )
 

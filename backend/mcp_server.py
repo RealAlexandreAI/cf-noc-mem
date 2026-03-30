@@ -30,6 +30,7 @@ from db import (
     get_db_manager, get_graph_service, get_glossary_service,
     get_search_indexer, close_db,
 )
+from db.namespace import get_namespace
 from db.snapshot import get_changeset_store
 import contextlib
 
@@ -176,6 +177,9 @@ def _record_rows(
     Overwrite semantics are handled by the store:
     - First touch of a PK: stores both before and after.
     - Subsequent touches: overwrites after only; before is frozen.
+
+    Changes are written to the namespace-specific store so that each agent's
+    review queue remains isolated.
     """
     store = get_changeset_store()
     store.record_many(before_state, after_state)
@@ -207,7 +211,7 @@ async def _fetch_and_format_memory(uri: str) -> str:
     domain, path = parse_uri(uri)
 
     # Get the memory
-    memory = await graph.get_memory_by_path(path, domain)
+    memory = await graph.get_memory_by_path(path, domain, namespace=get_namespace())
 
     if not memory:
         raise ValueError(f"URI '{make_uri(domain, path)}' not found.")
@@ -216,6 +220,7 @@ async def _fetch_and_format_memory(uri: str) -> str:
         memory["node_uuid"],
         context_domain=domain,
         context_path=path,
+        namespace=get_namespace(),
     )
 
     # Format output
@@ -240,7 +245,7 @@ async def _fetch_and_format_memory(uri: str) -> str:
     else:
         lines.append("Disclosure: (not set)")
 
-    node_keywords = await glossary.get_glossary_for_node(memory["node_uuid"])
+    node_keywords = await glossary.get_glossary_for_node(memory["node_uuid"], namespace=get_namespace())
     if node_keywords:
         lines.append(f"Keywords: [{', '.join(node_keywords)}]")
     else:
@@ -257,7 +262,7 @@ async def _fetch_and_format_memory(uri: str) -> str:
 
     # Glossary scan: detect glossary keywords present in the content
     try:
-        glossary_matches = await glossary.find_glossary_in_content(content)
+        glossary_matches = await glossary.find_glossary_in_content(content, namespace=get_namespace())
         if glossary_matches:
             current_node_uuid = memory["node_uuid"]
             
@@ -385,7 +390,7 @@ async def _generate_memory_index_view(domain_filter: Optional[str] = None) -> st
     graph = get_graph_service()
 
     try:
-        paths = await graph.get_all_paths()
+        paths = await graph.get_all_paths(namespace=get_namespace())
 
         # --- Step 1: Group all paths by (domain, node_uuid) ---
         node_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
@@ -471,7 +476,7 @@ async def _generate_recent_memories_view(limit: int = 10) -> str:
     graph = get_graph_service()
 
     try:
-        results = await graph.get_recent_memories(limit=limit)
+        results = await graph.get_recent_memories(limit=limit, namespace=get_namespace())
 
         lines = []
         lines.append("# Recently Modified Memories")
@@ -522,7 +527,7 @@ async def _generate_glossary_index_view() -> str:
     glossary = get_glossary_service()
 
     try:
-        raw_entries = await glossary.get_all_glossary()
+        raw_entries = await glossary.get_all_glossary(namespace=get_namespace())
         
         # Filter out truly pathless (unlinked) nodes
         entries = []
@@ -688,6 +693,7 @@ async def create_memory(
             title=title,
             disclosure=disclosure if disclosure else None,
             domain=domain,
+            namespace=get_namespace(),
         )
 
         created_uri = result.get("uri", make_uri(domain, result["path"]))
@@ -784,7 +790,7 @@ async def update_memory(
                     "No change would be made."
                 )
 
-            memory = await graph.get_memory_by_path(path, domain)
+            memory = await graph.get_memory_by_path(path, domain, namespace=get_namespace())
             if not memory:
                 return f"Error: Memory at '{full_uri}' not found."
 
@@ -823,7 +829,7 @@ async def update_memory(
                     f"Provide non-empty text to append."
                 )
             # Append mode: add to end of existing content
-            memory = await graph.get_memory_by_path(path, domain)
+            memory = await graph.get_memory_by_path(path, domain, namespace=get_namespace())
             if not memory:
                 return f"Error: Memory at '{full_uri}' not found."
 
@@ -846,6 +852,7 @@ async def update_memory(
             priority=priority,
             disclosure=disclosure,
             domain=domain,
+            namespace=get_namespace(),
         )
 
         _record_rows(
@@ -889,11 +896,11 @@ async def delete_memory(uri: str) -> str:
         domain, path = parse_uri(uri)
         full_uri = make_uri(domain, path)
 
-        memory = await graph.get_memory_by_path(path, domain)
+        memory = await graph.get_memory_by_path(path, domain, namespace=get_namespace())
         if not memory:
             return f"Error: Memory at '{full_uri}' not found."
 
-        result = await graph.remove_path(path, domain)
+        result = await graph.remove_path(path, domain, namespace=get_namespace())
         rows_before = result.get("rows_before", {})
 
         _record_rows(
@@ -957,6 +964,7 @@ async def add_alias(
             target_domain=target_domain,
             priority=priority,
             disclosure=disclosure,
+            namespace=get_namespace(),
         )
 
         _record_rows(
@@ -1021,7 +1029,7 @@ async def manage_triggers(
         domain, path = parse_uri(uri)
         full_uri = make_uri(domain, path)
 
-        memory = await graph.get_memory_by_path(path, domain)
+        memory = await graph.get_memory_by_path(path, domain, namespace=get_namespace())
         if not memory:
             return f"Error: Memory at '{full_uri}' not found."
 
@@ -1048,7 +1056,7 @@ async def manage_triggers(
                 if not kw:
                     continue
                 try:
-                    result = await glossary.add_glossary_keyword(kw, node_uuid)
+                    result = await glossary.add_glossary_keyword(kw, node_uuid, namespace=get_namespace())
                     added.append(kw)
                     if "rows_before" in result:
                         before_state["glossary_keywords"].extend(result["rows_before"].get("glossary_keywords", []))
@@ -1062,7 +1070,7 @@ async def manage_triggers(
                 kw = kw.strip()
                 if not kw:
                     continue
-                result = await glossary.remove_glossary_keyword(kw, node_uuid)
+                result = await glossary.remove_glossary_keyword(kw, node_uuid, namespace=get_namespace())
                 if result.get("success"):
                     removed.append(kw)
                     if "rows_before" in result:
@@ -1076,7 +1084,7 @@ async def manage_triggers(
             from db.snapshot import get_changeset_store
             get_changeset_store().record_many(before_state, after_state)
 
-        current = await glossary.get_glossary_for_node(node_uuid)
+        current = await glossary.get_glossary_for_node(node_uuid, namespace=get_namespace())
 
         lines = [f"Keywords for '{full_uri}':"]
         if added:
@@ -1130,7 +1138,7 @@ async def search_memory(
         if domain is not None and domain not in VALID_DOMAINS:
             return f"Error: Unknown domain '{domain}'. Valid domains: {', '.join(VALID_DOMAINS)}"
 
-        results = await search.search(query, limit, domain)
+        results = await search.search(query, limit, domain, namespace=get_namespace())
 
         if not results:
             scope = f"in '{domain}'" if domain else "across all domains"
