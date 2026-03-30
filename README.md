@@ -166,10 +166,10 @@ Nocturne Memory 采用极简但高可用（High-Availability）的 **SQLite/Post
 *   `writer://novel/character_a/psychology` → **正在创作的小说角色心理侧写**
 *   `system://boot` → **启动引导（AI 每次醒来自动加载核心身份）**
 
-<details>
-<summary><strong>🧬 展开查看数据模型深度解析（图后端 + 树前端）</strong></summary>
-
 ### 🧬 图后端 + 树前端 (Graph Backend, Tree Frontend)
+
+<details>
+<summary><strong>展开查看数据模型深度解析</strong></summary>
 
 后端采用 **Node–Memory–Edge–Path** 四实体图拓扑管理记忆网络。前端将所有操作降维成直觉的 `domain://path` 树操作——**复杂度在正确的地方被吸收**。
 
@@ -453,10 +453,13 @@ AI 通过 MCP 协议获得 **7 个工具**来操作自己的记忆：
 
 ---
 
+## 📦 高级特性
+
 <details>
-<summary><strong>📦 高级特性（SSE / Remote / Demo 数据库）</strong></summary>
+<summary><strong>SSE / Remote / Demo 数据库</strong></summary>
 
 ### SSE / Remote Support
+
 如果你的 AI 客户端不支持 stdio 模式（如 Web 端 Agent），可以使用 SSE 传输：
 ```bash
 python backend/run_sse.py
@@ -479,8 +482,10 @@ SSE Endpoint: `http://localhost:8000/sse`
 
 ---
 
+## 🐳 Docker 部署
+
 <details>
-<summary><strong>🐳 Docker 部署（Docker Compose 一键部署完整服务栈）</strong></summary>
+<summary><strong>Docker Compose 一键部署完整服务栈</strong></summary>
 
 除了本地 Python 安装，你还可以通过 Docker Compose 一键部署完整的 Nocturne Memory 服务栈（PostgreSQL + Backend API + SSE Server + Nginx 反向代理）。
 
@@ -594,7 +599,7 @@ docker compose down -v
 另有一版更详细但并不是开箱即用的提示词可供参考：[`docs/system_prompt.md`](docs/system_prompt.md)。
 
 <details>
-<summary><strong>📋 点击展开推荐 System Prompt</strong></summary>
+<summary><strong>点击展开推荐 System Prompt</strong></summary>
 
 ```markdown
 ### [启动协议]
@@ -703,7 +708,7 @@ disclosure = "在什么时候该想起这件事"的触发标签。
 
 ---
 
-### 🔄 版本升级与数据库迁移
+## 🔄 版本升级与数据库迁移
 
 当你通过 `git pull` 更新 Nocturne Memory 到新版本时，数据库结构（schema）可能发生变化。
 
@@ -716,7 +721,7 @@ disclosure = "在什么时候该想起这件事"的触发标签。
 > 备份文件保存在与数据库文件相同的目录下。如果迁移出现问题，你可以将 `.bak` 文件重命名回原文件名来恢复。
 
 <details>
-<summary><strong>🔄 从旧版 (Neo4j) 迁移到 v1.0 (SQLite)</strong></summary>
+<summary><strong>从旧版 (Neo4j) 迁移到 v1.0 (SQLite)</strong></summary>
 
 如果你之前使用的是基于 Neo4j 的旧版 Nocturne Memory（1.0 之前的版本），项目内附带了一个迁移脚本，可以将所有数据转移到新的 SQLite 后端。
 

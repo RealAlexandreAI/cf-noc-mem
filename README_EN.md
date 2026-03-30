@@ -165,10 +165,10 @@ Memories are organized like a file system, yet interconnected like a neural netw
 *   `writer://novel/character_a/psychology` → **Psychological profile of a novel character in progress**
 *   `system://boot` → **Boot sequence (auto-loads core identity on every wake-up)**
 
-<details>
-<summary><strong>🧬 Expand: Deep Dive into the Data Model (Graph Backend + Tree Frontend)</strong></summary>
-
 ### 🧬 Graph Backend, Tree Frontend
+
+<details>
+<summary><strong>Expand: Deep Dive into the Data Model</strong></summary>
 
 The backend manages a full **Node–Memory–Edge–Path** graph topology. The frontend collapses all operations into intuitive `domain://path` tree operations — **complexity is absorbed in the right place**.
 
@@ -452,8 +452,10 @@ The AI operates its own memories through **7 tools** via the MCP protocol:
 
 ---
 
+## 📦 Advanced Features
+
 <details>
-<summary><strong>📦 Advanced Features (SSE / Remote / Demo Database)</strong></summary>
+<summary><strong>SSE / Remote / Demo Database</strong></summary>
 
 ### SSE / Remote Support
 If your AI client doesn't support stdio mode (e.g., web-based Agents), you can use SSE transport:
@@ -478,8 +480,10 @@ The project ships with `demo.db`, which contains pre-configured example memories
 
 ---
 
+## 🐳 Docker Deployment
+
 <details>
-<summary><strong>🐳 Docker Deployment (One-click full service stack via Docker Compose)</strong></summary>
+<summary><strong>Docker Compose One-Click Full Stack Deployment</strong></summary>
 
 In addition to the local Python installation, you can deploy the full Nocturne Memory service stack with Docker Compose (PostgreSQL + Backend API + SSE Server + Nginx reverse proxy).
 
@@ -590,9 +594,10 @@ docker compose down -v
 
 To ensure the AI uses the memory system correctly, it's recommended to include the following instructions in your System Prompt.
 The full version includes detailed read/write guidelines and memory maintenance protocols — trim as needed.
+For a more detailed version that is useful as reference but not quite plug-and-play, see [`docs/system_prompt.md`](docs/system_prompt.md).
 
 <details>
-<summary><strong>📋 Click to expand the recommended System Prompt</strong></summary>
+<summary><strong>Click to expand the recommended System Prompt</strong></summary>
 
 ```markdown
 ### [Boot Protocol]
@@ -701,7 +706,7 @@ Writing new memories is **eating**; organizing old memories is **digesting**. Pe
 
 ---
 
-### 🔄 Version Upgrades & Database Migration
+## 🔄 Version Upgrades & Database Migration
 
 When you update Nocturne Memory to a new version via `git pull`, the database schema may change.
 
@@ -714,7 +719,7 @@ When you update Nocturne Memory to a new version via `git pull`, the database sc
 > Backup files are saved in the same directory as your database file. If anything goes wrong, you can rename the `.bak` file back to the original filename to restore.
 
 <details>
-<summary><strong>🔄 Migrating from Pre-1.0 (Neo4j) to v1.0 (SQLite)</strong></summary>
+<summary><strong>Migrating from Pre-1.0 (Neo4j) to v1.0 (SQLite)</strong></summary>
 
 If you were using an older version of Nocturne Memory backed by Neo4j (pre-1.0), a migration script is included to transfer all your data to the new SQLite backend.
 
