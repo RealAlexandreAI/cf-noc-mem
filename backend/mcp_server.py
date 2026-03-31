@@ -17,6 +17,7 @@ Multiple paths can point to the same memory (aliases).
 import os
 import re
 import sys
+import unicodedata
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from dotenv import load_dotenv, find_dotenv
@@ -194,6 +195,268 @@ def write_tool():
         return mcp.tool()(func)
 
     return decorator
+
+
+# =============================================================================
+# Text Normalization for Patch Matching
+# =============================================================================
+# When the LLM reads memory content and re-emits it as old_string, subtle
+# character-level differences creep in (curly vs straight quotes, dash
+# variants, trailing whitespace, consecutive space collapse).  These helpers
+# let update_memory fall back to a normalized comparison when the exact match
+# fails, while keeping a position map so the replacement targets the correct
+# range in the original content.
+# =============================================================================
+
+_NORM_CHAR_MAP = str.maketrans(
+    {
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u00ab": '"',
+        "\u00bb": '"',
+        "\uff02": '"',
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u00b4": "'",
+        "\uff07": "'",
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2015": "-",
+        "\uff0d": "-",
+    }
+)
+
+
+def _normalize_with_positions(
+    text: str,
+    *,
+    preserve_first_line_indent: bool = True,
+) -> Tuple[str, List[int]]:
+    """
+    Normalize *text* for matching and build a position map.
+
+    Returns ``(normalized, pos_map)`` where ``pos_map[i]`` is the index in
+    the **NFC-normalized** input that produced the *i*-th character of the
+    normalized output.
+
+    Steps applied in order:
+
+    1. Unicode NFC (compose decomposed sequences)
+    2. Quote / dash variant → ASCII equivalent  (1-to-1, no position shift)
+    3. Trailing ``[ \\t]`` per line stripped
+    4. Consecutive spaces collapsed to one (leading indentation protected)
+
+    When *preserve_first_line_indent* is ``False``, the very first line's
+    leading whitespace is treated as ordinary inline spacing (collapsed),
+    because the caller is normalizing a snippet (``old_string``) whose first
+    line may start mid-line rather than at a true line beginning.  Lines 2+
+    always preserve their leading indentation regardless of this flag.
+    """
+    text = unicodedata.normalize("NFC", text)
+    substituted = text.translate(_NORM_CHAR_MAP)
+
+    out: List[str] = []
+    pos_map: List[int] = []
+    lines = substituted.split("\n")
+    offset = 0
+
+    for line_idx, original_line in enumerate(lines):
+        if line_idx > 0:
+            out.append("\n")
+            pos_map.append(offset - 1)
+
+        # Handle Windows CRLF: remove \r from the line we process,
+        # but keep it in the original length calculation for offset.
+        line = original_line
+        if line.endswith("\r"):
+            line = line[:-1]
+
+        content_end = len(line.rstrip(" \t"))
+
+        # Protect leading indentation from space-collapsing — except on the
+        # first line when preserve_first_line_indent is False (snippet mode).
+        protect_indent = (line_idx > 0) or preserve_first_line_indent
+        leading_ws = 0
+        if protect_indent:
+            for ci in range(content_end):
+                if line[ci] in (" ", "\t"):
+                    leading_ws += 1
+                else:
+                    break
+
+        prev_space = False
+        for ci in range(content_end):
+            ch = line[ci]
+
+            if ci < leading_ws:
+                # Always preserve leading indentation exactly as-is
+                out.append(ch)
+                pos_map.append(offset + ci)
+                continue
+
+            if ch == " ":
+                if prev_space:
+                    continue
+                prev_space = True
+            else:
+                prev_space = False
+
+            out.append(ch)
+            pos_map.append(offset + ci)
+
+        offset += len(original_line) + 1
+
+    return "".join(out), pos_map
+
+
+def _find_valid_matches(
+    norm_content: str,
+    candidate: str,
+    *,
+    indent_collapsed: bool,
+) -> List[int]:
+    """
+    Find all positions where *candidate* occurs in *norm_content*, rejecting
+    hits that would **slide into the middle of another line's indentation**.
+
+    This guard exists because a space/tab at the start of *candidate* could
+    coincidentally align with part of a deeper indentation block in the
+    content, producing a match that silently corrupts whitespace structure.
+
+    The guard only fires when the hit falls inside a pure-indentation prefix
+    (every character between the line start and the hit position is a space or
+    tab).  If ANY non-whitespace character precedes the hit on the same line,
+    the space is ordinary inline content and the hit is always accepted.
+
+    *indent_collapsed*: whether the candidate's first line had its leading
+    whitespace collapsed (i.e. ``preserve_first_line_indent=False`` was used
+    during normalization).  This affects how strictly we reject indent-region
+    hits:
+
+    - ``False`` (indent preserved): the candidate's leading whitespace was
+      kept verbatim, so a hit inside an indentation region is only invalid if
+      it doesn't start at the line's very beginning (shorter indent sliding
+      into deeper indent).
+    - ``True`` (indent collapsed): the candidate's leading whitespace was
+      already folded, so ANY hit that falls inside an indentation region is
+      suspect — we can't trust the whitespace count to anchor it.
+
+    Returns a list of valid match positions (indices into *norm_content*).
+    """
+    # Check whether the candidate starts with whitespace.  If it doesn't,
+    # there's no risk of sliding into an indentation block, so every hit is
+    # valid and we can skip the per-hit line analysis entirely.
+    first_line = candidate.split("\n", 1)[0]
+    could_slide_into_indent = (
+        bool(first_line) and first_line[0] in (" ", "\t")
+    )
+
+    hits: List[int] = []
+    start = 0
+    while True:
+        pos = norm_content.find(candidate, start)
+        if pos == -1:
+            break
+
+        valid = True
+        if could_slide_into_indent:
+            # Determine whether this hit sits inside the indentation region
+            # of its line (= only whitespace between line-start and hit).
+            line_start = norm_content.rfind("\n", 0, pos)
+            line_start = line_start + 1 if line_start != -1 else 0
+            prefix = norm_content[line_start:pos]
+            hit_is_in_indent_region = (
+                prefix == "" or all(c in (" ", "\t") for c in prefix)
+            )
+
+            if hit_is_in_indent_region:
+                if indent_collapsed:
+                    # Collapsed mode: any indent-region hit is unreliable
+                    # because the candidate's leading ws was folded away.
+                    if prefix != "":
+                        valid = False
+                else:
+                    # Preserved mode: reject only if hit didn't start at
+                    # the line beginning (= shorter indent inside deeper).
+                    if pos != line_start:
+                        valid = False
+
+        if valid:
+            hits.append(pos)
+        start = pos + 1
+
+    return hits
+
+
+def _try_normalized_patch(
+    content: str, old_string: str, new_string: str
+) -> Optional[str]:
+    """
+    Attempt to locate *old_string* inside *content* via normalized comparison.
+
+    Returns the patched content when **exactly one** valid normalized match
+    exists, or ``None`` when no match is found or the match is ambiguous.
+    """
+    # NFC-normalize content so that pos_map indices (which are computed from
+    # the NFC'd text inside _normalize_with_positions) align with the string
+    # we slice from.  Write boundaries also do NFC for new data, but
+    # historical records may still contain decomposed characters.
+    content = unicodedata.normalize("NFC", content)
+    norm_content, pos_map = _normalize_with_positions(content)
+
+    if not pos_map:
+        return None
+
+    # We don't know whether old_string's first line starts at a true line
+    # beginning or mid-line.  Generate candidates for both modes, collect all
+    # valid matches, then require exactly one across both modes combined.
+    all_results: List[Tuple[int, str]] = []  # (position, candidate)
+    for preserve in (True, False):
+        candidate = _normalize_with_positions(
+            old_string, preserve_first_line_indent=preserve
+        )[0]
+        if not candidate:
+            continue
+        valid_hits = _find_valid_matches(
+            norm_content, candidate, indent_collapsed=(not preserve)
+        )
+        for hit in valid_hits:
+            # Deduplicate: same position + same candidate length = same match
+            if not any(h == hit and len(c) == len(candidate) for h, c in all_results):
+                all_results.append((hit, candidate))
+
+    if len(all_results) != 1:
+        return None  # 0 = not found, >1 = ambiguous
+
+    idx, norm_old = all_results[0]
+
+    orig_start = pos_map[idx]
+    match_end = idx + len(norm_old)
+    if match_end < len(pos_map):
+        orig_end = pos_map[match_end]
+    else:
+        orig_end = pos_map[-1] + 1
+
+    # If the matched text starts with \n but the original text has \r\n,
+    # orig_start will point to \n, leaving \r dangling.
+    if (orig_start < len(content) and content[orig_start] == '\n'
+            and orig_start > 0 and content[orig_start - 1] == '\r'):
+        orig_start -= 1
+
+    # If the matched text ends right before a CRLF, preserve the \r.
+    if (orig_end < len(content) and content[orig_end] == '\n'
+            and orig_end > 0 and content[orig_end - 1] == '\r'):
+        orig_end -= 1
+
+    # Normalize new_string's line endings to match the content's convention.
+    if '\n' in new_string:
+        clean = new_string.replace('\r\n', '\n').replace('\r', '\n')
+        if '\r\n' in content:
+            new_string = clean.replace('\n', '\r\n')
+        else:
+            new_string = clean
+
+    return content[:orig_start] + new_string + content[orig_end:]
 
 
 # =============================================================================
@@ -797,23 +1060,53 @@ async def update_memory(
             current_content = memory.get("content", "")
             count = current_content.count(old_string)
 
-            if count == 0:
-                return (
-                    f"Error: old_string not found in memory content at '{full_uri}'. "
-                    f"Make sure it matches the existing text exactly."
-                )
             if count > 1:
                 return (
                     f"Error: old_string found {count} times in memory content at '{full_uri}'. "
                     f"Provide more surrounding context to make it unique."
                 )
 
-            # Perform the replacement
-            content = current_content.replace(old_string, new_string, 1)
+            if count == 1:
+                content = current_content.replace(old_string, new_string, 1)
+            else:
+                # Exact match failed — fall back to normalized comparison
+                # (handles curly/straight quotes, dash variants, trailing
+                # whitespace, and consecutive-space collapse).
+                patched = _try_normalized_patch(
+                    current_content, old_string, new_string
+                )
+                if patched is None:
+                    # Diagnose why: use the same _find_valid_matches logic
+                    # so the error message reflects what _try_normalized_patch
+                    # actually sees.
+                    norm_content = _normalize_with_positions(current_content)[0]
+                    total_valid = 0
+                    for _preserve in (True, False):
+                        _norm_old = _normalize_with_positions(
+                            old_string, preserve_first_line_indent=_preserve
+                        )[0]
+                        if _norm_old:
+                            total_valid += len(_find_valid_matches(
+                                norm_content, _norm_old,
+                                indent_collapsed=(not _preserve),
+                            ))
 
-            # Safety check: ensure the replacement actually changed something.
-            # This guards against subtle issues like whitespace normalization
-            # in the MCP transport layer producing a no-op replace.
+                    if total_valid == 0:
+                        return (
+                            f"Error: old_string not found in memory content at "
+                            f"'{full_uri}', even after Unicode normalization "
+                            f"(quotes, dashes, whitespace). "
+                            f"Re-read the memory and copy the exact text."
+                        )
+                    
+                    return (
+                        f"Error: old_string found multiple times in "
+                        f"memory content at '{full_uri}' (after Unicode "
+                        f"normalization). Provide more surrounding context "
+                        f"to make it unique."
+                    )
+                content = patched
+
             if content == current_content:
                 return (
                     f"Error: Replacement produced identical content at '{full_uri}'. "

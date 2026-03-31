@@ -14,6 +14,7 @@ This module contains only graph-domain business logic.
 """
 
 import uuid as uuid_lib
+import unicodedata
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
 
 from sqlalchemy import (
@@ -434,6 +435,13 @@ class GraphService:
         deprecated: bool = False,
     ) -> Memory:
         """Insert a new memory row and flush to obtain its ID."""
+        # Canonicalize content to NFC at the write boundary so all stored
+        # strings are consistently normalized.  This is an intentional
+        # whole-content policy: the system has no byte-level version diff or
+        # rollback, so converting historical NFD data to NFC on write is
+        # the desired migration path, not a side-effect.
+        content = unicodedata.normalize("NFC", content)
+        
         memory = Memory(
             content=content,
             node_uuid=node_uuid,
