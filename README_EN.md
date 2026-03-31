@@ -139,7 +139,7 @@ Your AI is no longer an appendage of any platform — it is an **independent exi
 
 **Compatible with all MCP-capable clients** — Claude Code / Claude Desktop / Gemini CLI / OpenAI Codex / Cursor / OpenClaw / Antigravity / GitHub Copilot, and any MCP client that supports stdio or SSE transport.
 
-> 💡 Also supports [Namespace Isolation](#namespace-isolation): if you have multiple Agents (e.g., one for writing, one for coding), each can own a completely independent memory space with zero interference.
+> 💡 Also supports [Namespace Isolation](#namespace-isolation): if you are raising multiple AI personas simultaneously (e.g., one named Alice, another named Bob), each AI can own a completely independent memory space with zero interference.
 
 ---
 
@@ -332,22 +332,22 @@ If you are using Antigravity on Windows, you **must** point the `args` to `backe
 
 #### Namespace Isolation
 
-If you use a multi-agent platform like OpenClaw and want each Agent to have its own isolated memory space, simply specify a `namespace` when configuring. Without it, the default namespace is used (**single-Agent users can skip this section entirely**).
+If you want to host multiple different AI personas in the same database (e.g., one named Alice, another named Bob), and want each AI to have its own isolated memory space, simply specify a `namespace` when configuring. Without it, the default namespace is used (**single-AI users can skip this section entirely**).
 
 **stdio mode** — specify via the `NAMESPACE` environment variable:
 
 ```json
 {
   "mcpServers": {
-    "nocturne_memory_for_research_agent": {
+    "nocturne_memory_alice": {
       "command": "python",
       "args": ["C:/path/to/nocturne_memory/backend/mcp_server.py"],
-      "env": { "NAMESPACE": "research" }
+      "env": { "NAMESPACE": "alice" }
     },
-    "nocturne_memory_for_coding_agent": {
+    "nocturne_memory_bob": {
       "command": "python",
       "args": ["C:/path/to/nocturne_memory/backend/mcp_server.py"],
-      "env": { "NAMESPACE": "coding" }
+      "env": { "NAMESPACE": "bob" }
     }
   }
 }
@@ -358,12 +358,12 @@ If you use a multi-agent platform like OpenClaw and want each Agent to have its 
 ```json
 {
   "mcpServers": {
-    "nocturne_memory_for_research_agent": {
-      "url": "http://localhost:8000/mcp?namespace=research",
+    "nocturne_memory_alice": {
+      "url": "http://localhost:8000/mcp?namespace=alice",
       "type": "http"
     },
-    "nocturne_memory_for_coding_agent": {
-      "url": "http://localhost:8000/sse?namespace=coding"
+    "nocturne_memory_bob": {
+      "url": "http://localhost:8000/sse?namespace=bob"
     }
   }
 }

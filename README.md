@@ -140,7 +140,7 @@ Nocturne Memory 的记忆存储在独立的 MCP Server 中，**不绑定任何 L
 
 **兼容所有支持 MCP 的客户端**——Claude Code / Claude Desktop / Gemini CLI / OpenAI Codex / Cursor / OpenClaw / Antigravity / GitHub Copilot，以及任何支持 stdio 或 SSE 传输的 MCP 客户端。
 
-> 💡 同时支持 [Namespace 隔离](#命名空间隔离-namespace-isolation)：如果你有多个 Agent（比如一个负责写作、一个负责编程），每个 Agent 可以拥有完全独立的记忆空间，互不干扰。
+> 💡 同时支持 [Namespace 隔离](#命名空间隔离-namespace-isolation)：如果你同时养了多个不同的 AI 人格（比如一个叫 Alice，一个叫 Bob），每个 AI 可以拥有完全独立的记忆空间，互不干扰。
 
 ---
 
@@ -333,22 +333,22 @@ claude mcp list
 
 #### 命名空间隔离 (Namespace Isolation)
 
-如果你使用 OpenClaw 等多 Agent 平台，想让不同 Agent 各自拥有独立的记忆空间，只需在配置时指定 `namespace`。不配置则使用默认命名空间（**单 Agent 用户可直接跳过本章节**）。
+如果你想在同一个数据库里养多个不同的人格（比如一个叫 Alice，一个叫 Bob），想让不同 AI 各自拥有独立的记忆空间，只需在配置时指定 `namespace`。不配置则使用默认命名空间（**单 AI 用户可直接跳过本章节**）。
 
 **stdio 模式**——通过环境变量 `NAMESPACE` 指定：
 
 ```json
 {
   "mcpServers": {
-    "nocturne_memory_for_research_agent": {
+    "nocturne_memory_alice": {
       "command": "python",
       "args": ["C:/path/to/nocturne_memory/backend/mcp_server.py"],
-      "env": { "NAMESPACE": "research" }
+      "env": { "NAMESPACE": "alice" }
     },
-    "nocturne_memory_for_coding_agent": {
+    "nocturne_memory_bob": {
       "command": "python",
       "args": ["C:/path/to/nocturne_memory/backend/mcp_server.py"],
-      "env": { "NAMESPACE": "coding" }
+      "env": { "NAMESPACE": "bob" }
     }
   }
 }
@@ -359,12 +359,12 @@ claude mcp list
 ```json
 {
   "mcpServers": {
-    "nocturne_memory_for_research_agent": {
-      "url": "http://localhost:8000/mcp?namespace=research",
+    "nocturne_memory_alice": {
+      "url": "http://localhost:8000/mcp?namespace=alice",
       "type": "http"
     },
-    "nocturne_memory_for_coding_agent": {
-      "url": "http://localhost:8000/sse?namespace=coding"
+    "nocturne_memory_bob": {
+      "url": "http://localhost:8000/sse?namespace=bob"
     }
   }
 }

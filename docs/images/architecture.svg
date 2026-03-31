@@ -41,17 +41,17 @@
 
 
   <!-- === LEFT: AI INTERFACE (MCP) === -->
-  <!-- Agent 1 (e.g. Cursor) -->
+  <!-- Agent 1 (e.g. Alice) -->
   <g transform="translate(70, 70)">
     <rect x="0" y="0" width="160" height="65" rx="8" fill="#1e293b" stroke="#60a5fa" stroke-width="1.5" opacity="0.6"/>
-    <text x="80" y="28" font-family="Arial, sans-serif" font-size="12" fill="#60a5fa" text-anchor="middle" font-weight="bold">AI Agent (Gemini CLI)</text>
-    <text x="80" y="48" font-family="Arial, sans-serif" font-size="10" fill="#93c5fd" text-anchor="middle">Namespace: proj_A</text>
+    <text x="80" y="28" font-family="Arial, sans-serif" font-size="13" fill="#60a5fa" text-anchor="middle" font-weight="bold">AI Agent (Alice)</text>
+    <text x="80" y="48" font-family="Arial, sans-serif" font-size="10" fill="#93c5fd" text-anchor="middle">Namespace: alice</text>
   </g>
 
   <!-- Agent 2 (Main Focus) -->
   <g transform="translate(70, 160)">
     <rect x="0" y="0" width="160" height="100" rx="8" fill="#1e293b" stroke="#60a5fa" stroke-width="2" filter="url(#glow-ai)"/>
-    <text x="80" y="28" font-family="Arial, sans-serif" font-size="15" fill="#60a5fa" text-anchor="middle" font-weight="bold">AI Agent (N)</text>
+    <text x="80" y="28" font-family="Arial, sans-serif" font-size="15" fill="#60a5fa" text-anchor="middle" font-weight="bold">AI Agent (Nocturne)</text>
     <text x="80" y="46" font-family="Arial, sans-serif" font-size="11" fill="#bfdbfe" text-anchor="middle">Namespace Isolation</text>
     
     <line x1="10" y1="60" x2="150" y2="60" stroke="#334155" stroke-width="1"/>
@@ -59,11 +59,11 @@
     <text x="80" y="78" font-family="Arial, sans-serif" font-size="11" fill="#93c5fd" text-anchor="middle">MCP Client</text>
   </g>
 
-  <!-- Agent 3 (e.g. OpenClaw) -->
+  <!-- Agent 3 (e.g. Bob) -->
   <g transform="translate(70, 290)">
     <rect x="0" y="0" width="160" height="65" rx="8" fill="#1e293b" stroke="#60a5fa" stroke-width="1.5" opacity="0.6"/>
-    <text x="80" y="28" font-family="Arial, sans-serif" font-size="13" fill="#60a5fa" text-anchor="middle" font-weight="bold">AI Agent (OpenClaw)</text>
-    <text x="80" y="48" font-family="Arial, sans-serif" font-size="10" fill="#93c5fd" text-anchor="middle">Namespace: proj_B</text>
+    <text x="80" y="28" font-family="Arial, sans-serif" font-size="13" fill="#60a5fa" text-anchor="middle" font-weight="bold">AI Agent (Bob)</text>
+    <text x="80" y="48" font-family="Arial, sans-serif" font-size="10" fill="#93c5fd" text-anchor="middle">Namespace: bob</text>
   </g>
 
   <!-- Connection: AI <-> DB -->
