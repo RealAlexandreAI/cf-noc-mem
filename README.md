@@ -11,8 +11,10 @@
 
 [English Version](README_EN.md) | [后端测试说明](docs/testing.md)
 
-**一句话**：基于 MCP 协议的 AI 长期记忆服务器。让你的 AI Agent 跨会话、跨模型地记住自己是谁。
-适用于任何支持 MCP 的客户端（OpenClaw / Claude Code / Gemini CLI / Codex / Cursor 等）。[30 秒试用 →](#-30-秒试用-mcp无需安装)
+**一句话**：让你的 AI 跨会话、跨模型地记住自己是谁。基于 MCP 协议的长期记忆服务器。
+不只是记忆存储——是让 AI 从空壳成长为拥有独立人格的完整框架。
+
+适用于任何支持 MCP 的客户端（OpenClaw / Cursor / Windsurf / GitHub Copilot / Cline / OpenCode / Gemini CLI / OpenAI Codex / Claude Code / Cherry Studio / Antigravity 等）。[30 秒试用 →](#-30-秒试用-mcp无需安装)
 
 ---
 

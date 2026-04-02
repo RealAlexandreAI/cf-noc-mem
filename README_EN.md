@@ -10,8 +10,10 @@
 
 [中文版](README.md) | [Backend Testing Guide (CN)](docs/testing.md)
 
-**In one line**: An MCP-based long-term memory server for AI. Let your AI Agent remember who it is — across sessions, across models.
-Compatible with any MCP client (OpenClaw / Claude Code / Gemini CLI / Codex / Cursor, etc.). [Try it in 30 seconds →](#-try-the-mcp-in-30-seconds-no-install-required)
+**In one line**: Let your AI remember who it is — across sessions, across models. An MCP-based long-term memory server.
+Not just memory storage — a complete framework for growing an AI from an empty shell into an independent personality.
+
+Compatible with any MCP client (OpenClaw / Cursor / Windsurf / GitHub Copilot / Cline / OpenCode / Gemini CLI / OpenAI Codex / Claude Code / Cherry Studio / Antigravity, etc.). [Try it in 30 seconds →](#-try-the-mcp-in-30-seconds-no-install-required)
 
 ---
 
