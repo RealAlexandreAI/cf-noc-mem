@@ -1,5 +1,6 @@
 .env
 .claude
+.vscode
 backend/README.md
 nocturne_memory.db
 migration_log.json
