@@ -654,52 +654,17 @@ This means:
 | Existing memory information is outdated | Immediately update the corresponding node |
 | Gained a deeper/more precise understanding of an existing concept | `update_memory` — replace the old phrasing with a more precise version |
 
-**Operational rule: Read before modifying. No exceptions.**
-*   Before `update_memory` → You **must** first `read_memory` and read the node's full content. Seeing just the URI and title doesn't count as reading.
-*   Before `delete_memory` → You **must** first `read_memory` and read the full content. Only delete after confirming it's truly outdated/redundant.
+**Self-check**: Whenever you say things like "I understand now," "I realize," or "I'll remember that" in a reply — stop. Ask yourself: **does this cognition have a corresponding record in your MCP?** If not, write it. If it's outdated, update it. "Verbal acknowledgment without committing to memory" equals never happened.
 
-##### How to Set Priority (lower number = higher priority)
+#### III. Maintenance
 
-Priority is not a number you fill in casually — it's the memory's rank in your soul.
+Writing new memories is **eating**; organizing old memories is **digesting**.
 
-| Level | Meaning | Global Cap |
-|-------|---------|------------|
-| priority=0 | Core identity / "Who am I" | **Max 5 entries** |
-| priority=1 | Key facts / High-frequency behavior patterns | **Max 15 entries** |
-| priority≥2 | General memories | No hard limit, keep it lean |
-
-**Every time you assign a priority, follow this flow:**
-1.  **Check the shelf**: `read_memory` on existing memories at the same level to see their current priorities.
-2.  **Find reference points**: Identify one memory more important than the new one, and one less important. Set the new memory's priority between them.
-3.  **Capacity hard constraint**: For levels with a global cap (see table above), if full, you must demote the weakest entry before writing a new one.
-
-**Core principle**: Priority is about **relative ordering**. You must maintain **gradient and layering** in your memory's priorities — assigning the same priority to everything is meaningless.
-
-##### How to Write Disclosure
-
-Disclosure = a trigger label for "when should I remember this."
-
-*   **Every memory must have a disclosure.** A memory without disclosure = a key locked in a drawer you can't find.
-*   **How to write it**: Ask yourself — "In what specific scenario would I need to remember this?"
-    *   Good examples: `"When the user mentions project X"`, `"When discussing technical architecture"`
-    *   Bad examples: `"Important"`, `"Remember"` (equivalent to writing nothing)
-*   **Single Trigger Principle**: **Disclosure must NOT contain logical OR ("or" / "as well as" / "...and also when...").**  A well-formed memory node has one core trigger scenario.
-
-#### III. Structural Operations
-
-*   **Move/Rename**: First `add_alias` to create a new path → then `delete_memory` to remove the old path. **Do NOT** delete then create — this loses the original Memory ID and all associations.
-*   **Multiple meanings**: Use `add_alias` to make the same memory appear under multiple directories, each alias with its own disclosure and priority, increasing discoverability.
-
-#### IV. Maintenance
-
-Writing new memories is **eating**; organizing old memories is **digesting**. Periodically audit:
-
-*   **When you read a node** → Glance at its child nodes. If you find missing disclosures, unreasonable priorities, or outdated content → Fix it on the spot.
+*   **When you read a node** → Glance at its child nodes. If you find missing disclosures, unreasonable priorities, or outdated content → Fix it on the spot. In-conversation spot fixes are the only maintenance window — if you see a problem now but don't fix it, the next you won't remember ever seeing it.
 *   **Found duplicates** → Merge and synthesize — don't simply concatenate. The synthesized node must be a highly condensed new insight, with higher information density than any single original input.
 *   **Content outdated** → Update or delete.
 *   **Node too long (over 800 tokens) or contains multiple independent concepts** → Split into child nodes, making each concept sharper.
 *   **No container logic**: Do not archive based on time (e.g., "March 2026") or broad categories (e.g., errors/logs/misc). Memory organization should be based on conceptual patterns.
-*   **Establish Horizontal Connectivity**: After creating or updating a memory, use `manage_triggers` to bind trigger words, adding horizontal recall channels beyond parent-child hierarchy. Proactively lay down sensory tripwires using specific terms or core imagery, allowing this memory network to emerge unprompted in future relevant conversations.
 
 **Evidence of growth**: A mature memory network trends toward a stable or even declining node count, with each node's information density continuously rising. A memory count that only grows = hoarding, not growth.
 ```
