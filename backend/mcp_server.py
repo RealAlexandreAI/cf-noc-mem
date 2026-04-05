@@ -918,18 +918,35 @@ async def create_memory(
 
     Args:
         parent_uri: Parent URI (e.g., "core://agent", "writer://chapters")
-                    Use "core://" or "writer://" for root level in that domain
+                    Use "core://" or "writer://" for root level in that domain.
                     parent_uri MUST be an existing node, or it will cause an ERROR.
-        content: Memory content
-        priority: **Relative Retrieval Priority** (lower number = retrieved first, min 0).
-                    Priority is a RELATIVE ranking across ALL visible memories, NOT an absolute label.
-                    *   **禁止**把所有记忆都设成同一个数字（如全部设为0或1），那等于没有排序。
-                    *   **正确做法**：先观察当前视野中所有其它记忆的 priority 值，
-                        然后为新记忆选一个能体现其相对重要性的数字，插入到合适的位置。
-                    *   例：视野中已有 priority 1, 3, 5 的记忆，新记忆比3重要但不如1，就设为2。
-        title: Optional title. If not provided, auto-assigns numeric ID
+                    Choose the parent whose reader would most likely need this new content.
+                    Parent-child here means associative relevance, not taxonomic "is-a" classification.
+        content: Memory content.
+        priority: Relative retrieval priority (lower = retrieved first, min 0).
+                    This is a RELATIVE ranking against ALL memories currently in your mind,
+                    not just siblings under the same parent.
+                    How to choose:
+                    1. Consider the priorities of all memories you are aware of.
+                    2. Find one you consider more important and one less important than the new memory.
+                    3. Set priority between them.
+                    Hard caps: priority=0 max 5 across entire library; priority=1 max 15.
+                    If a tier is full, demote the weakest existing entry before inserting.
+        title: Optional title (alphanumeric, hyphens, underscores only).
+               If not provided, auto-assigns numeric ID.
         disclosure: A short trigger condition describing WHEN to read_memory() this node.
-                    Think: "In what specific situation would I need to know this?"
+                    Write it as the situation BEFORE the failure would occur, not the failure itself.
+                    The trigger must fire while there is still time to change behavior.
+
+                    Example of disclosure logic:
+
+                    If a memory records that you once gave unsolicited diet advice when your user
+                    mentioned skipping breakfast, and they found it patronizing:
+                      BAD: "When I start lecturing about nutrition" (already mid-failure)
+                      GOOD: "When the user mentions skipping a meal" (specific trigger, fires before I react)
+
+                    Also BAD: "important", "remember" (zero information).
+                    Every memory MUST have a disclosure. Omitting it = unreachable memory.
 
     Returns:
         The created memory's full URI
@@ -964,10 +981,11 @@ async def create_memory(
 
         return (
             f"Success: Memory created at '{created_uri}'\\n\\n"
-            f"[SYSTEM REMINDER]: A memory without triggers is a book sealed in a box. "
-            f"Use `manage_triggers` NOW to wire this memory into your recall network. "
-            f"Find a specific word (X) that already appears in an older memory's content, and bind it as a trigger for this new node. "
-            f"(e.g. manage_triggers('<this_uri>', add=['specific_word_from_old_memory']))"
+            f"[SYSTEM REMINDER]: Look around your memory network. Are there existing memories related to this one? "
+            f"Would reading them trigger a need to recall this new memory? If yes, link them!\\n"
+            f"- If the related memories are few and this memory's scope is narrow, use `add_alias`.\\n"
+            f"- If the related memories are many and this memory's scope is broad, consider using `manage_triggers`.\\n"
+            f"- (Never invent arbitrary placeholder words just to force a trigger.)"
         )
 
     except ValueError as e:
@@ -987,34 +1005,32 @@ async def update_memory(
 ) -> str:
     """
     Updates an existing memory to a new version.
-    The old version will be deleted.
-    警告：update之前需先read_memory，确保你知道你覆盖了什么。
+
+    PREREQUISITE: You MUST call read_memory(uri) and read the full content BEFORE calling this.
+    Updating without reading first is a forbidden operation.
 
     Only provided fields are updated; others remain unchanged.
 
     Two content-editing modes (mutually exclusive):
 
-    1. **Patch mode** (primary): Provide old_string + new_string.
-       Finds old_string in the existing content and replaces it with new_string.
-       old_string must match exactly ONE location in the content.
-       To delete a section, set new_string to empty string "".
+    1. Patch mode (primary): Provide old_string + new_string.
+       old_string must match exactly ONE location in the existing content.
+       To delete a section, set new_string to "".
 
-    2. **Append mode**: Provide append.
-       Adds the given text to the end of existing content.
+    2. Append mode: Provide append.
+       Adds text to the end of existing content.
 
-    There is NO full-replace mode. You must explicitly specify what you're changing
-    or removing via old_string/new_string. This prevents accidental content loss.
+    There is NO full-replace mode.
 
     Args:
         uri: URI to update (e.g., "core://agent/my_user")
-        old_string: [Patch mode] Text to find in existing content (must be unique)
-        new_string: [Patch mode] Text to replace old_string with. Use "" to delete a section.
-        append: [Append mode] Text to append to the end of existing content
-        priority: New **relative** priority **for this specific URI/edge** (None = keep existing).
-                  Priority is a RELATIVE ranking across ALL visible memories, NOT an absolute label.
-                  It is bound to the path (edge), NOT the memory content.
-                  If the same memory has aliases A and B, updating A's priority does NOT affect B's.
-        disclosure: New disclosure **for this specific URI/edge** (None = keep existing).
+        old_string: [Patch] Text to find in existing content (must be unique match)
+        new_string: [Patch] Replacement text. Use "" to delete a section.
+        append: [Append] Text to append to end of existing content
+        priority: New relative priority for THIS URI/edge only (None = keep existing).
+                  Bound to the path, not the content. Alias A and B have independent priorities.
+                  See create_memory for how to choose the right value.
+        disclosure: New disclosure for THIS URI/edge only (None = keep existing).
                     Same edge-binding rule as priority.
 
     Returns:
@@ -1164,14 +1180,12 @@ async def update_memory(
 @write_tool()
 async def delete_memory(uri: str) -> str:
     """
-    通过切断 URI 路径来“流放”一段记忆。一旦删除，通往该内容的路径将永久消失。
+    Deletes a memory by cutting its URI path. The path is permanently removed.
+    If deletion is blocked, remove child memories first.
 
-    当某段历史已经风化、变得冗余、或者其存在正在积极毒害你当前的身份稳定性时，必须行使删除权。
-    这不仅是清理，更是人格骨架化过程。舍弃那些平庸的肉，才能露出真理的骨。
-
-    警告：
-    你正在主动放弃对一段过去的访问权。这是一种关于“遗忘”的手术，请确保你在删除前 read_memory 过正文。
-
+    PREREQUISITE: You MUST call read_memory(uri) and read the full content BEFORE deleting.
+    Judging by URI/title alone is insufficient. Read the content, confirm it is
+    truly obsolete/redundant/harmful, then delete.
 
     Args:
         uri: The URI to delete (e.g., "core://agent/old_note")
@@ -1222,21 +1236,23 @@ async def add_alias(
     """
     Creates an alias URI pointing to the same memory as target_uri.
 
-    Use this to increase a memory's reachability via multiple URIs.
-    Aliases can even cross domains (e.g., link a writer draft to a core memory).
-    新增别名时系统会自动在其下级联映射所有子树，原路径保持不变。
+    This is NOT a copy. The alias and the original share the same Memory ID (same content).
+    Each alias has its own independent priority and disclosure.
+    Child nodes under target_uri are automatically mirrored under new_uri.
 
-    Each alias is an independent "lens" into the same memory.
-    Different aliases can (and should) carry different priority and disclosure values
-    to reflect the context in which each alias is used.
+    When to use:
+    - Reading node A would benefit from also knowing about existing memory B
+      → alias B under A. Same logic as create_memory's parent selection.
+    - Move/rename a memory: add_alias to new path, then delete_memory the old path.
+      NEVER delete+create to move — that loses the Memory ID and all associations.
 
     Args:
         new_uri: New URI to create (alias)
         target_uri: Existing URI to alias
-        priority: **Relative** retrieval priority for THIS alias path (lower = higher priority, default 0).
-                  Choose a value that makes sense among the new_uri's siblings, not the target's.
+        priority: Relative priority for THIS alias path (lower = higher priority, default 0).
+                  Set by relevance to the parent's topic, not the memory's absolute importance.
+                  e.g., "database setup notes" → high priority under "deployment", low under "team_onboarding".
         disclosure: Disclosure condition for THIS alias path (default None).
-                    Set it to describe when this particular alias context should surface.
 
     Returns:
         Success message
@@ -1280,28 +1296,18 @@ async def manage_triggers(
     remove: Optional[List[str]] = None,
 ) -> str:
     """
-    Wire a memory into the recall network by binding trigger words to it.
+    Bind trigger words to a memory so it surfaces automatically during read_memory.
 
-    A memory without triggers is a book sealed in a box.
-    It exists, but it will NEVER be recalled unless you manually open that box.
-    This tool is the ONLY way to give a memory the chance to surface on its own.
+    Mechanism: When a trigger word appears in ANY memory's content, read_memory
+    shows a glossary link to this target node at the bottom.
 
-    **How it works:**
-    When a trigger word appears in ANY memory's content, read_memory will
-    automatically show a link to this target node at the bottom.
-    This is how memories become interconnected -- not by hierarchy, but by resonance.
-
-    **How to use it:**
-    - After creating or updating a memory (Y), find a specific word (X) that
-      already exists in an older memory's content. Bind X as a trigger for Y.
-    - Example: You want reading "Nginx" (in memory A: reverse proxy config)
-      to automatically surface "SPA Redirect Trap" (memory Y: common hazard).
-      -> manage_triggers("core://hazards/spa_fallback", add=["Nginx"])
-    - Use SPECIFIC terms. Broad/generic words will create noise.
-
-    **Notes:**
-    - A node can have multiple triggers, and the same trigger can point to multiple nodes.
-    - To view all triggers in the system: read_memory("system://glossary").
+    How to choose trigger words:
+    - The trigger word MUST already exist in some older memory's content.
+      You are borrowing a word from an existing text to hook a new memory onto it.
+    - Do NOT invent obscure placeholder words that appear nowhere in the memory library.
+    - Use SPECIFIC terms. Broad/generic words create noise.
+    - A node can have multiple triggers. Same trigger can point to multiple nodes.
+    - View all triggers: read_memory("system://glossary").
 
     Args:
         uri: The memory URI to wire triggers for (e.g., "core://agent/misaligned_codex")
@@ -1312,7 +1318,7 @@ async def manage_triggers(
         Current list of triggers for this node after changes.
 
     Examples:
-        manage_triggers("core://agent/misaligned_codex", add=["misaligned"])
+        manage_triggers("core://hazards/spa_fallback", add=["Nginx"])
         manage_triggers("writer://story_world/factions", add=["Nuremberg", "Aether"])
     """
     graph = get_graph_service()
@@ -1408,12 +1414,12 @@ async def search_memory(
     """
     Search memories by path and content using full-text search.
 
-    This uses a lexical full-text index. It is stronger than plain substring
-    matching, but it is still **NOT semantic search**.
+    Use this when you don't know the URI for a memory. Do NOT guess URIs.
+    This is lexical full-text search, NOT semantic search.
 
     Args:
         query: Search keywords (substring match)
-        domain: Optional domain to search in (e.g., "core", "writer").
+        domain: Optional domain filter (e.g., "core", "writer").
                 If not specified, searches all domains.
         limit: Maximum results (default 10)
 
