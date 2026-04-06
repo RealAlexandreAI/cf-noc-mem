@@ -920,8 +920,11 @@ async def create_memory(
         parent_uri: Parent URI (e.g., "core://agent", "writer://chapters")
                     Use "core://" or "writer://" for root level in that domain.
                     parent_uri MUST be an existing node, or it will cause an ERROR.
+
                     Choose the parent whose reader would most likely need this new content.
                     Parent-child here means associative relevance, not taxonomic "is-a" classification.
+                    (e.g., A memory about user's diet habits belongs under "core://user/health"
+                    or "core://user/preferences", NOT under a meaningless container like "core://logs").
         content: Memory content.
         priority: Relative retrieval priority (lower = retrieved first, min 0).
                     This is a RELATIVE ranking against ALL memories currently in your mind,

@@ -27,7 +27,7 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `parent_uri` | `str` | ✅ | 父节点 URI。用 `"core://"` 在 core 域根级创建 |
+| `parent_uri` | `str` | ✅ | 父节点 URI。强调联想相关性（What/主题），如 `core://user/health`，不要用无意义的容器如 `core://logs`。 |
 | `content` | `str` | ✅ | 记忆内容（支持 Markdown） |
 | `priority` | `int` | ✅ | 优先级（0=最高，数字越小越优先） |
 | `title` | `str` | ❌ | 路径名称（仅限 `a-z`, `0-9`, `_`, `-`）。不填则自动分配序号 |
