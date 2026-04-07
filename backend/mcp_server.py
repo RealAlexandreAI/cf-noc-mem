@@ -1266,7 +1266,7 @@ async def add_alias(
         priority: Relative priority for THIS alias path (lower = higher priority, default 0).
                   Set by relevance to the parent's topic, not the memory's absolute importance.
                   e.g., "database setup notes" → high priority under "deployment", low under "team_onboarding".
-        disclosure: Disclosure condition for THIS alias path (default None).
+        disclosure: Disclosure condition for THIS alias path. If not provided, it will inherit the target's disclosure.
 
     Returns:
         Success message

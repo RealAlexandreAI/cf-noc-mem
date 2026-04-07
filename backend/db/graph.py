@@ -1249,7 +1249,11 @@ class GraphService:
                 raise ValueError(
                     f"Target path '{target_domain}://{target_path}' not found"
                 )
-            _, _, target_node_uuid = target
+            _, target_edge, target_node_uuid = target
+
+            # Inherit disclosure from the target if not explicitly provided
+            if disclosure is None and target_edge.disclosure:
+                disclosure = target_edge.disclosure
 
             if "/" in new_path:
                 parent_path = new_path.rsplit("/", 1)[0]
