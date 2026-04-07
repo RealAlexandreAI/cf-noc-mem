@@ -79,6 +79,7 @@ class Node(Base):
 
     uuid = Column(String(36), primary_key=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    last_accessed_at = Column(DateTime, nullable=True)
 
     memories = relationship("Memory", back_populates="node")
     child_edges = relationship(
@@ -212,6 +213,25 @@ class SearchDocument(Base):
     search_terms = Column(Text, nullable=False, default="")
     priority = Column(Integer, nullable=False, default=0)
     updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MemoryAccessLog(Base):
+    """Asynchronous access log for tracking memory reading frequency and sequences."""
+
+    __tablename__ = "memory_access_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    node_uuid = Column(
+        String(36),
+        ForeignKey("nodes.uuid", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    namespace = Column(String(64), nullable=False, default="")
+    accessed_at = Column(DateTime, default=datetime.utcnow, index=True)
+    context = Column(String(64), nullable=True)
+
+    node = relationship("Node")
 
 
 # =============================================================================

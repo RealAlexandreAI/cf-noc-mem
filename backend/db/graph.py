@@ -34,6 +34,7 @@ from .models import (
     Edge,
     Path,
     GlossaryKeyword,
+    MemoryAccessLog,
     ChangeCollector,
     escape_like_literal,
     serialize_row,
@@ -70,6 +71,25 @@ class GraphService:
     # =========================================================================
     # Read Operations
     # =========================================================================
+
+    async def log_access(self, node_uuid: str, namespace: str, context: Optional[str] = None) -> None:
+        """
+        Asynchronously log an access event and update the node's last_accessed_at timestamp.
+        """
+        from datetime import datetime
+        async with self.session() as session:
+            await session.execute(
+                update(Node)
+                .where(Node.uuid == node_uuid)
+                .values(last_accessed_at=datetime.utcnow())
+            )
+            
+            log_entry = MemoryAccessLog(
+                node_uuid=node_uuid,
+                namespace=namespace,
+                context=context
+            )
+            session.add(log_entry)
 
     async def get_memory_by_path(
         self, path: str, domain: str = "core", namespace: str = ""

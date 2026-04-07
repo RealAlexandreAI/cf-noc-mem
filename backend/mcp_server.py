@@ -464,7 +464,7 @@ def _try_normalized_patch(
 # =============================================================================
 
 
-async def _fetch_and_format_memory(uri: str) -> str:
+async def _fetch_and_format_memory(uri: str, track_access: bool = False) -> str:
     """
     Internal helper to fetch memory data and return formatted string.
     Used by read_memory tool.
@@ -478,6 +478,16 @@ async def _fetch_and_format_memory(uri: str) -> str:
 
     if not memory:
         raise ValueError(f"URI '{make_uri(domain, path)}' not found.")
+
+    if track_access and memory.get("node_uuid"):
+        import asyncio
+        asyncio.create_task(
+            graph.log_access(
+                memory["node_uuid"],
+                namespace=get_namespace(),
+                context="mcp_read"
+            )
+        )
 
     children = await graph.get_children(
         memory["node_uuid"],
@@ -899,7 +909,8 @@ async def read_memory(uri: str) -> str:
         return await _generate_recent_memories_view(limit=limit)
 
     try:
-        return await _fetch_and_format_memory(uri)
+        content = await _fetch_and_format_memory(uri, track_access=True)
+        return content
     except Exception as e:
         # Catch both ValueError (not found) and other exceptions
         return f"Error: {str(e)}"
