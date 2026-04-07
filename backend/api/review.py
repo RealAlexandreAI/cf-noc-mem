@@ -729,8 +729,11 @@ async def rollback_group(node_uuid: str):
                             # When admin does a rollback, it rebuilds FTS docs for ALL namespaces
                             await graph.rollback_to_memory(old_active_mem_id, session=session)
                             messages.append(f"Restored previous memory content ({old_active_mem_id}).")
-                        except ValueError:
-                            pass
+                        except ValueError as exc:
+                            raise RuntimeError(
+                                "Cannot restore previous memory content from "
+                                f"snapshot target {old_active_mem_id}: {exc}"
+                            ) from exc
 
                 # 5. Revert Glossary Keywords
                 for r in rows:
