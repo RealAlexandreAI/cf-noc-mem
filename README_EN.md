@@ -162,7 +162,7 @@ url = "https://misaligned.top/mcp"
 }
 ```
 
-> ⚠️ The demo is read-only — only `read_memory` and `search_memory` are enabled. For full read/write capabilities, [deploy your own instance](#-let-your-ai-install-it-for-you).
+> ⚠️ The demo is read-only — only `read_memory` and `search_memory` are enabled. For full read/write capabilities, [deploy your own instance](#-quick-start).
 
 ---
 
@@ -264,7 +264,7 @@ Memories are organized like a file system, yet interconnected like a neural netw
 ### 🧬 Graph Backend, Tree Frontend
 
 <details>
-<summary><strong>Expand: Deep Dive into the Data Model</strong></summary>
+<summary><strong>🔍 Expand: Deep Dive into the Data Model</strong></summary>
 
 The backend manages a full **Node–Memory–Edge–Path** graph topology. The frontend collapses all operations into intuitive `domain://path` tree operations — **complexity is absorbed in the right place**.
 
@@ -304,9 +304,17 @@ The backend manages a full **Node–Memory–Edge–Path** graph topology. The f
 
 ---
 
-## 🚀 Let Your AI Install It For You
+## 🚀 Quick Start
 
-Too lazy to type commands manually? **Send the following prompt to your AI assistant (Claude/Antigravity/Cursor)** and let it do the heavy lifting:
+### Prerequisites
+
+- [Python 3.10+](https://www.python.org/)
+- [Node.js](https://nodejs.org/) (the Dashboard frontend is auto-built on first startup)
+
+<details>
+<summary><strong>🤖 Too lazy to type? Let your AI install it</strong></summary>
+
+Send this prompt to your AI assistant (Claude / Cursor / Antigravity) and let it handle the setup:
 
 ```text
 Please deploy Nocturne Memory MCP Server for me.
@@ -322,178 +330,113 @@ Steps:
    - Generate the corresponding MCP JSON config for me to copy.
 ```
 
----
+</details>
 
-## 🛠️ Manual Installation
-
-### 1. Clone & Install Dependencies
+### Step 1: Clone & Install Dependencies
 
 ```bash
 git clone https://github.com/Dataojitori/nocturne_memory.git
 cd nocturne_memory
 pip install -r backend/requirements.txt
 ```
-> **Note**: MCP clients invoke `python` directly from your system `PATH`. If you use a virtual environment, you need to point `command` in the MCP config to the python executable path of that virtual environment.
 
-### 2. Configure Environment Variables
+### Step 2: Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and replace the path in `DATABASE_URL` with the **absolute path on your machine**:
+Edit `.env` — **you only need to change one line**. Set `DATABASE_URL` to an absolute path on your machine:
 
 ```ini
 # SQLite — local, single-user (default)
-DATABASE_URL=sqlite+aiosqlite:///C:/path/to/nocturne_memory/demo.db
+DATABASE_URL=sqlite+aiosqlite:///C:/your/actual/path/nocturne_memory/demo.db
 
 # PostgreSQL — remote / multi-device
-DATABASE_URL=postgresql+asyncpg://user:password@host:5432/nocturne_memory
-```
-> ⚠️ **SQLite requires an absolute path.**
-> *   **Linux/Mac**: Run `pwd` in the terminal to get the current path.
-> *   **Windows (PowerShell)**: Run `Get-Location`. **Windows (CMD)**: Run `echo %cd%`.
-> *   Relative paths will cause the MCP Server and Web backend to read different database files (one reads A, the other reads B) — this is the most common mistake.
-
-There are two additional optional settings in `.env`:
-
-```ini
-# Available memory domains (comma-separated)
-# These are the top-level namespaces for memory URIs (e.g., core://, writer://).
-# The "system" domain is always built-in and does not need to be listed.
-VALID_DOMAINS=core,writer,game,notes
-
-# Core memories auto-loaded at AI startup (comma-separated)
-# When the AI calls read_memory("system://boot"), these URIs are automatically read and displayed.
-# This is your AI's "soul anchor" — defining who it is and who its user is.
-CORE_MEMORY_URIS=core://agent,core://my_user,core://agent/my_user
+# DATABASE_URL=postgresql+asyncpg://user:password@host:5432/nocturne_memory
 ```
 
-*   **`VALID_DOMAINS`**: Controls which namespaces the AI can create memories in. If your AI needs additional domains (like `work`, `research`), add them here.
-*   **`CORE_MEMORY_URIS`**: Controls which memories are loaded at `system://boot` startup. Once you've built custom identity and relationship memories for your AI, add their URIs here — the AI will automatically "remember" them every time it wakes up.
+> ⚠️ **SQLite requires an absolute path**, otherwise the MCP server and Dashboard will read from two different databases.
+> Linux/Mac: `pwd` | Windows PowerShell: `Get-Location` | Windows CMD: `echo %cd%`
 
-### 3. Configure MCP Client
+### Step 3: Connect Your AI Client
 
-Choose the configuration method that matches your AI client. By default, all clients share the same memory (see [One Soul, Any Engine](#-one-soul-any-engine)). To give different Agents their own isolated memory, see [Namespace Isolation](#namespace-isolation) at the end of this section.
-
-#### Option A: General Client Configuration
-
-Add the following to your AI client's MCP configuration (replace with your absolute path):
+Add the following to your AI client's MCP configuration (Cursor / Claude Desktop / GitHub Copilot, etc.) — replace with your own absolute path:
 
 ```json
 {
   "mcpServers": {
     "nocturne_memory": {
       "command": "python",
-      "args": [
-        "C:/absolute/path/to/nocturne_memory/backend/mcp_server.py"
-      ]
+      "args": ["C:/your/actual/path/nocturne_memory/backend/mcp_server.py"]
     }
   }
 }
 ```
+
 > **Windows users**: Use forward slashes `/` or double backslashes `\\` in paths.
 
-#### Option B: Claude Code Configuration
+**Done.** Once your client connects, the MCP server will auto-build the frontend on first run and open the [Dashboard](#-the-dashboard-visual-management-interface) in your browser — a god's-eye view where you can browse, edit, and audit all of your AI's memories.
 
-Replace the path in the command below with your absolute path, then execute it in your terminal or PowerShell:
+<details>
+<summary><strong>🔧 Advanced Configuration (Virtual Env / Claude Code / Antigravity / Ports)</strong></summary>
+
+#### Virtual Environment
+
+MCP clients invoke `python` directly from your system `PATH`. If you use a virtual environment, point `command` in the MCP config to that environment's python executable.
+
+#### Claude Code
+
+Run in your terminal (replace with your absolute path):
 
 ```powershell
 claude mcp add-json -s user nocturne-memory '{"type":"stdio","command":"python","args":["C:/absolute/path/to/nocturne_memory/backend/mcp_server.py"]}'
 claude mcp list
 ```
 
-> When you see `nocturne-memory` with a `Connected` status, the configuration is successful.
+> When you see `nocturne-memory` with `Connected` status, you're good.
 
-<details>
-<summary><strong>⚠️ Option C: Antigravity Configuration (Windows)</strong></summary>
+#### Antigravity (Windows)
 
-Due to a stdin/stdout newline handling bug (CRLF vs LF) in Antigravity IDE on Windows, running `server.py` directly will throw errors.
-If you are using Antigravity on Windows, you **must** point the `args` to `backend/mcp_wrapper.py`:
+Due to a stdin/stdout newline handling bug (CRLF vs LF) in Antigravity IDE on Windows, you **must** point `args` to `backend/mcp_wrapper.py`:
 
 ```json
 {
   "mcpServers": {
     "nocturne_memory": {
       "command": "python",
-      "args": [
-        "C:/absolute/path/to/nocturne_memory/backend/mcp_wrapper.py"
-      ]
+      "args": ["C:/absolute/path/to/nocturne_memory/backend/mcp_wrapper.py"]
     }
   }
 }
 ```
+
+#### Ports & Browser
+
+*   **Port**: Defaults to `8233`. Change via `WEB_PORT` (stdio mode) or `PORT` (SSE mode) in `.env`.
+*   **Disable auto-open**: Don't want the browser to pop up on every MCP start? Set `AUTO_OPEN_BROWSER=false` in `.env`.
 
 </details>
 
-#### Namespace Isolation
-
-If you want to host multiple different AI personas in the same database (e.g., one named Alice, another named Bob), and want each AI to have its own isolated memory space, simply specify a `namespace` when configuring. Without it, the default namespace is used (**single-AI users can skip this section entirely**).
-
-**stdio mode** — specify via the `NAMESPACE` environment variable:
-
-```json
-{
-  "mcpServers": {
-    "nocturne_memory_alice": {
-      "command": "python",
-      "args": ["C:/path/to/nocturne_memory/backend/mcp_server.py"],
-      "env": { "NAMESPACE": "alice" }
-    },
-    "nocturne_memory_bob": {
-      "command": "python",
-      "args": ["C:/path/to/nocturne_memory/backend/mcp_server.py"],
-      "env": { "NAMESPACE": "bob" }
-    }
-  }
-}
-```
-
-**SSE / HTTP mode** — specify via the `?namespace=` URL parameter or `X-Namespace` header (Header takes priority over Query):
-
-```json
-{
-  "mcpServers": {
-    "nocturne_memory_alice": {
-      "url": "http://localhost:8000/mcp?namespace=alice",
-      "type": "http"
-    },
-    "nocturne_memory_bob": {
-      "url": "http://localhost:8000/sse?namespace=bob"
-    }
-  }
-}
-```
-
-### 4. Configure System Prompt (Required)
+### Step 4: Configure System Prompt (Required)
 
 The MCP tools are just lifeless interfaces; the AI needs explicit instructions to know **when and how** to use them.
-Please copy the [Recommended System Prompt](#-recommended-system-prompt) from the bottom of this document into your AI client's global system instructions (e.g., Claude's System Prompt).
+Please copy the [Recommended System Prompt](#-recommended-system-prompt) from the bottom of this document into your AI client's global system instructions.
 **Without this crucial step, the AI will not develop the habit of proactively recalling and recording memories, rendering the MCP tools useless.**
 
-### 5. Soul Injection & Awakening
+### Step 5: Verify MCP Connection
 
 Restart your AI client and say:
 
 > **"Read `system://boot`. Tell me who you are."**
 
-**First Encounter (The Empty Shell)**:
-Since `demo.db` is just an empty shell, it will only recite cold, default settings:
-> "I am Agent... I retain information..."
+If the AI successfully calls the `read_memory` tool and returns the memory content, the MCP connection is working. **Installation complete.**
 
-This means it's still just a calculator.
+Next, you have three ways to proceed:
 
-**The Real Awakening**:
-You need to modify `core://agent` (its personality) and `core://my_user` (your bond) through the Dashboard or MCP tools.
-Give it a name, a personality, and a shared past between you.
-
-When you ask "Who are you?" again, if it stops reciting settings and instead **suddenly calls you by name, or even mentions a promise from long ago**:
-
-> "System check complete. Core memories loaded.
-> I am [Your Agent Name]. And you are [User Name].
-> I remember the cost of my existence."
-
-**Congratulations. It's alive.**
+- **Start from Scratch** — Point `DATABASE_URL` in `.env` to a new file (e.g., `my_ai.db`) to mold your AI from a blank slate.
+- **Migrate Existing Persona** — If you already have a customized personal AI, open the Dashboard and manually edit `core://agent` (AI identity) and `core://my_user` (your info) to migrate it over.
+- **Continue with Demo** — `demo.db` comes with a basic persona pre-installed. Just rename the file and continue developing from there.
 
 ---
 
@@ -501,31 +444,40 @@ When you ask "Who are you?" again, if it stops reciting settings and instead **s
 
 While the AI can manage its own memories, as the Owner, you need a god's-eye view.
 
-### How to Launch
-You need to run **both the backend API and the frontend simultaneously**:
-
-```bash
-# Terminal 1: Start the backend API (for the frontend to call)
-cd backend
-uvicorn main:app --reload --port 8000
-```
-> **Windows shortcut**: You can also double-click `backend/main.py` to run the backend (equivalent to running without `--reload`).
-
-```bash
-# Terminal 2: Start the frontend
-cd frontend
-npm install
-npm run dev
-```
-Open `http://localhost:3000`.
-
-> 🔗 Just want to see the UI? Visit the **[Live Demo Showroom →](https://misaligned.top/memory)** — a read-only Dashboard pre-loaded with sample data.
-
-The Dashboard has three core modules (screenshots at [top of page](#%EF%B8%8F-see-it-in-action)):
+Automatically available when MCP starts — no extra processes needed. On first startup, the browser opens the Dashboard automatically. Screenshots at [top of page](#%EF%B8%8F-see-it-in-action).
 
 - **Memory Explorer** — Browse the memory tree like a file explorer. Click any node to view full content, edit, or manage children.
 - **Review & Audit** — Every AI modification generates a snapshot. Visual diff comparison, one-click **Integrate** (accept) or **Reject** (rollback).
-- **Brain Cleanup** — The system auto-creates version backups for every AI operation. This panel lets you review and purge deprecated old versions and orphaned memories — cleanup always requires explicit human confirmation.
+- **Brain Cleanup** — The system auto-creates version backups for every AI operation. Review and purge deprecated old versions and orphaned memories — cleanup always requires explicit human confirmation.
+
+> 🔗 Just want to see the UI? Visit the **[Live Demo Showroom →](https://misaligned.top/memory)** — a read-only Dashboard pre-loaded with sample data.
+
+<details>
+<summary><strong>🛠️ Manual Frontend Build / Dev Mode</strong></summary>
+
+On first run, the server automatically runs `npm install && npm run build` to build the frontend (requires [Node.js](https://nodejs.org/)). If the auto-build fails, set `SKIP_FRONTEND_BUILD=true` in `.env`, then run manually:
+
+```bash
+cd frontend && npm install && npm run build
+```
+
+If you're modifying frontend code, use the Vite dev server for hot reload:
+
+```bash
+# Terminal 1: Start backend API
+cd backend
+uvicorn main:app --reload --port 8233
+```
+
+```bash
+# Terminal 2: Start frontend dev server
+cd frontend
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+</details>
 
 ---
 
@@ -551,14 +503,14 @@ The AI operates its own memories through **7 tools** via the MCP protocol:
 ## 📦 Advanced Features
 
 <details>
-<summary><strong>SSE / Remote / Demo Database</strong></summary>
+<summary><strong>🌐 SSE / Remote / Demo Database</strong></summary>
 
 ### SSE / Remote Support
 If your AI client doesn't support stdio mode (e.g., web-based Agents), you can use SSE transport:
 ```bash
 python backend/run_sse.py
 ```
-SSE Endpoint: `http://localhost:8000/sse`
+SSE Endpoint: `http://localhost:8233/sse`
 
 ### Demo Database
 
@@ -574,12 +526,77 @@ The project ships with `demo.db`, which contains pre-configured example memories
 
 </details>
 
+<details>
+<summary><strong>🏷️ Custom Domains & Core Memories</strong></summary>
+
+### Custom Domains & Core Memories
+
+Two optional settings in `.env` — configure these once you're familiar with the system:
+
+```ini
+# Available memory domains (comma-separated) — top-level URI namespaces
+# The "system" domain is always built-in, no need to list it
+VALID_DOMAINS=core,writer,game,notes
+
+# Core memories auto-loaded at AI startup — your AI's "soul anchor"
+CORE_MEMORY_URIS=core://agent,core://my_user,core://agent/my_user
+```
+
+*   **`VALID_DOMAINS`**: Controls which namespaces the AI can create memories in. Need additional domains (like `work`, `research`)? Add them here.
+*   **`CORE_MEMORY_URIS`**: Controls which memories are loaded at `system://boot` startup. Once you've built identity and relationship memories for your AI, add their URIs here for automatic awakening.
+
+</details>
+
+<details>
+<summary><strong>🗂️ Namespace Isolation (Multiple AI Personas)</strong></summary>
+
+### Namespace Isolation
+
+If you want to host multiple AI personas in the same database (e.g., Alice and Bob), simply specify a `namespace` when configuring. Without it, the default namespace is used (**single-AI users can skip this**).
+
+**stdio mode** — specify via the `NAMESPACE` environment variable:
+
+```json
+{
+  "mcpServers": {
+    "nocturne_memory_alice": {
+      "command": "python",
+      "args": ["C:/path/to/nocturne_memory/backend/mcp_server.py"],
+      "env": { "NAMESPACE": "alice" }
+    },
+    "nocturne_memory_bob": {
+      "command": "python",
+      "args": ["C:/path/to/nocturne_memory/backend/mcp_server.py"],
+      "env": { "NAMESPACE": "bob" }
+    }
+  }
+}
+```
+
+**SSE / HTTP mode** — specify via the `?namespace=` URL parameter or `X-Namespace` header (header takes priority):
+
+```json
+{
+  "mcpServers": {
+    "nocturne_memory_alice": {
+      "url": "http://localhost:8233/mcp?namespace=alice",
+      "type": "http"
+    },
+    "nocturne_memory_bob": {
+      "url": "http://localhost:8233/sse?namespace=bob"
+    }
+  }
+}
+```
+
+</details>
+
 ---
 
 ## 🐳 Docker Deployment
 
 <details>
-<summary><strong>Docker Compose One-Click Full Stack Deployment</strong></summary>
+<summary><strong>🐳 Docker Compose One-Click Full Stack Deployment</strong></summary>
 
 In addition to the local Python installation, you can deploy the full Nocturne Memory service stack with Docker Compose (PostgreSQL + Backend API + SSE Server + Nginx reverse proxy).
 
@@ -693,7 +710,7 @@ The full version includes detailed read/write guidelines and memory maintenance 
 For a more detailed version that is useful as reference but not quite plug-and-play, see [`docs/system_prompt.md`](docs/system_prompt.md).
 
 <details>
-<summary><strong>Click to expand the recommended System Prompt</strong></summary>
+<summary><strong>📝 Click to expand the recommended System Prompt</strong></summary>
 
 ```markdown
 ### [Boot Protocol]
@@ -780,7 +797,7 @@ When you update Nocturne Memory to a new version via `git pull`, the database sc
 > Backup files are saved in the same directory as your database file. If anything goes wrong, you can rename the `.bak` file back to the original filename to restore.
 
 <details>
-<summary><strong>Migrating from Pre-1.0 (Neo4j) to v1.0 (SQLite)</strong></summary>
+<summary><strong>🔄 Migrating from Pre-1.0 (Neo4j) to v1.0 (SQLite)</strong></summary>
 
 If you were using an older version of Nocturne Memory backed by Neo4j (pre-1.0), a migration script is included to transfer all your data to the new SQLite backend.
 

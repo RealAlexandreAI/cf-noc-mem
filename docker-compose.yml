@@ -17,7 +17,7 @@ services:
   backend-api:
     build:
       context: ./backend
-    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    command: uvicorn main:app --host 0.0.0.0 --port 8233
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?ssl=disable
       API_TOKEN: ${API_TOKEN:-}
@@ -30,7 +30,7 @@ services:
     volumes:
       - snapshots_data:/app/snapshots
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8233/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -48,8 +48,9 @@ services:
       CORE_MEMORY_URIS: ${CORE_MEMORY_URIS}
       SNAPSHOT_DIR: /app/snapshots
       SKIP_DB_INIT: "true"
-      PORT: "8001"
+      PORT: "8234"
       HOST: 0.0.0.0
+      AUTO_OPEN_BROWSER: "false"
     depends_on:
       backend-api:
         condition: service_healthy
