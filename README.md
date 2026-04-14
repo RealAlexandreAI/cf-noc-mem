@@ -621,7 +621,8 @@ CORE_MEMORY_URIS=core://agent,core://my_user,core://agent/my_user
 5. **访问管理界面**
    打开 `http://localhost`（或 `http://localhost:<NGINX_PORT>`）
 
-> 💡 首次启动时，`backend-api` 会自动初始化数据库表结构（`create_all`），之后每次启动都会检查并执行 pending 的数据库迁移脚本（`db/migrations/`）。迁移前会自动备份数据库。
+> 💡 **提示**：首次启动时，`backend-api` 会自动初始化数据库表结构（`create_all`），之后每次启动都会检查并执行 pending 的数据库迁移脚本（`db/migrations/`）。迁移前会自动备份数据库（保存在 `backups_data` 卷中）。
+> ⚠️ **注意**：Docker 部署使用的是全新的 PostgreSQL，默认是**完全空白**的状态，不包含 `demo.db` 中的预置示例数据。你需要通过客户端或 Dashboard 从零开始为 AI 创建核心记忆。
 
 ### MCP 客户端配置（远程 SSE / Streamable HTTP）
 
@@ -633,7 +634,10 @@ Docker 部署后，AI 客户端可以通过暴露的端点连接到 Nocturne Mem
   "mcpServers": {
     "nocturne_memory": {
       "url": "http://<your-server-ip>:<NGINX_PORT>/mcp",
-      "type": "http"
+      "type": "http",
+      "headers": {
+        "Authorization": "Bearer <your-api-token>"
+      }
     }
   }
 }
@@ -668,6 +672,9 @@ docker compose logs -f backend-api
 
 # 重启特定服务
 docker compose restart backend-sse
+
+# 手动备份 PostgreSQL 数据库到当前目录
+docker compose exec postgres sh -c 'pg_dump -U $POSTGRES_USER -d $POSTGRES_DB' > backup.sql
 
 # 停止所有服务
 docker compose down

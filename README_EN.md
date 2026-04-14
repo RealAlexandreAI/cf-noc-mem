@@ -634,7 +634,8 @@ In addition to the local Python installation, you can deploy the full Nocturne M
 5. **Open the management dashboard**
    Visit `http://localhost` (or `http://localhost:<NGINX_PORT>`)
 
-> 💡 On first launch, `backend-api` automatically initializes the database schema (`create_all`). On every launch, it also checks for and applies pending database migrations (`db/migrations/`). The database is automatically backed up before migrations are applied.
+> 💡 **Note**: On first launch, `backend-api` automatically initializes the database schema (`create_all`). On every launch, it also checks for and applies pending database migrations (`db/migrations/`). The database is automatically backed up before migrations are applied (saved in the `backups_data` volume).
+> ⚠️ **Warning**: Docker deployment uses a fresh PostgreSQL database, which is **completely empty** by default. It does not contain the pre-configured example data from `demo.db`. You will need to create your AI's core memories from scratch using the client or Dashboard.
 
 ### MCP Client Configuration (Remote SSE / Streamable HTTP)
 
@@ -646,7 +647,10 @@ After Docker deployment, AI clients can connect to Nocturne Memory via the expos
   "mcpServers": {
     "nocturne_memory": {
       "url": "http://<your-server-ip>:<NGINX_PORT>/mcp",
-      "type": "http"
+      "type": "http",
+      "headers": {
+        "Authorization": "Bearer <your-api-token>"
+      }
     }
   }
 }
@@ -681,6 +685,9 @@ docker compose logs -f backend-api
 
 # Restart a specific service
 docker compose restart backend-sse
+
+# Manually backup PostgreSQL database to the current directory
+docker compose exec postgres sh -c 'pg_dump -U $POSTGRES_USER -d $POSTGRES_DB' > backup.sql
 
 # Stop all services
 docker compose down

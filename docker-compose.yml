@@ -29,6 +29,7 @@ services:
         condition: service_healthy
     volumes:
       - snapshots_data:/app/snapshots
+      - backups_data:/app/backups
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8233/health || exit 1"]
       interval: 10s
@@ -56,6 +57,7 @@ services:
         condition: service_healthy
     volumes:
       - snapshots_data:/app/snapshots
+      - backups_data:/app/backups
     restart: unless-stopped
 
   nginx:
@@ -73,3 +75,4 @@ services:
 volumes:
   postgres_data:
   snapshots_data:
+  backups_data:
