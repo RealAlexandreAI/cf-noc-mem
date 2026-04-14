@@ -111,8 +111,12 @@ async def test_full_mcp_crud_with_namespace_isolation(mcp_env):
 
     # --- Alias isolation ---
     set_namespace("agent_a")
-    assert "Success" in await add_alias(new_uri="writer://agent_copy",
-                                         target_uri="core://agent", priority=5)
+    assert "Success" in await add_alias(
+        new_uri="writer://agent_copy",
+        target_uri="core://agent",
+        priority=5,
+        disclosure="When mirroring agent identity",
+    )
 
     set_namespace("agent_b")
     alias_b = await read_memory("writer://agent_copy")
@@ -179,13 +183,13 @@ async def test_system_index_domain_isolation(mcp_env):
 
     set_namespace("agent_a")
     await create_memory(parent_uri="core://", content="A core data", priority=0,
-                        title="a_core", disclosure="")
+                        title="a_core", disclosure="When reviewing agent A core index")
     await create_memory(parent_uri="writer://", content="A writer data", priority=0,
-                        title="a_writer", disclosure="")
+                        title="a_writer", disclosure="When reviewing agent A writer index")
 
     set_namespace("agent_b")
     await create_memory(parent_uri="core://", content="B core data", priority=0,
-                        title="b_core", disclosure="")
+                        title="b_core", disclosure="When reviewing agent B core index")
 
     set_namespace("agent_a")
     index_core = await read_memory("system://index/core")
@@ -280,9 +284,9 @@ async def test_delete_cascade_isolation(mcp_env):
     for ns in ("agent_a", "agent_b"):
         set_namespace(ns)
         await create_memory(parent_uri="core://", content=f"Parent {ns}",
-                            priority=0, title="parent", disclosure="")
+                            priority=0, title="parent", disclosure=f"When reviewing parent memory in {ns}")
         await create_memory(parent_uri="core://parent", content=f"Child {ns}",
-                            priority=1, title="child", disclosure="")
+                            priority=1, title="child", disclosure=f"When reviewing child memory in {ns}")
 
     set_namespace("agent_a")
     await delete_memory("core://parent/child")
@@ -346,7 +350,11 @@ async def test_default_namespace_mcp_full_flow(mcp_env):
 
     # Alias
     assert "Success" in await add_alias(
-        new_uri="writer://agent_ref", target_uri="core://agent", priority=5)
+        new_uri="writer://agent_ref",
+        target_uri="core://agent",
+        priority=5,
+        disclosure="When mirroring default agent identity",
+    )
 
     alias_content = await read_memory("writer://agent_ref")
     assert "Updated default agent" in alias_content

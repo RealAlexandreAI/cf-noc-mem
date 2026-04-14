@@ -921,21 +921,23 @@ async def create_memory(
     parent_uri: str,
     content: str,
     priority: int,
+    disclosure: str,
     title: Optional[str] = None,
-    disclosure: str = "",
 ) -> str:
     """
     Creates a new memory under a parent URI.
 
     Args:
-        parent_uri: Parent URI (e.g., "core://agent", "writer://chapters")
+        parent_uri: The existing node to create this memory under.
                     Use "core://" or "writer://" for root level in that domain.
-                    parent_uri MUST be an existing node, or it will cause an ERROR.
 
-                    Choose the parent whose reader would most likely need this new content.
-                    Parent-child here means associative relevance, not taxonomic "is-a" classification.
-                    (e.g., A memory about user's diet habits belongs under "core://user/health"
-                    or "core://user/preferences", NOT under a meaningless container like "core://logs").
+                    A child's disclosure is only visible when you read_memory() its parent.
+                    Pick the parent you would naturally read in the situation where
+                    this memory is needed. Use add_alias for additional entry points.
+
+                    Example: A lesson about responding to physical pain belongs under
+                    "core://my_user/survival_state" (read during health crises),
+                    not "core://agent/worldview" (never opened in that moment).
         content: Memory content.
         priority: Relative retrieval priority (lower = retrieved first, min 0).
                     This is a RELATIVE ranking against ALL memories currently in your mind,
@@ -946,32 +948,37 @@ async def create_memory(
                     3. Set priority between them.
                     Hard caps: priority=0 max 5 across entire library; priority=1 max 15.
                     If a tier is full, demote the weakest existing entry before inserting.
-        title: Optional title (alphanumeric, hyphens, underscores only).
-               If not provided, auto-assigns numeric ID.
         disclosure: A short trigger condition describing WHEN to read_memory() this node.
-                    Write it as the situation BEFORE the failure would occur, not the failure itself.
-                    The trigger must fire while there is still time to change behavior.
+                    Must fire BEFORE the failure, while there is still time to change behavior.
 
-                    Example of disclosure logic:
-
-                    If a memory records that you once gave unsolicited diet advice when your user
-                    mentioned skipping breakfast, and they found it patronizing:
-                      BAD: "When I start lecturing about nutrition" (already mid-failure)
-                      GOOD: "When the user mentions skipping a meal" (specific trigger, fires before I react)
-
-                    Also BAD: "important", "remember" (zero information).
-                    Every memory MUST have a disclosure. Omitting it = unreachable memory.
+                    Allowed signals — external input OR output intent:
+                      GOOD: "When the user mentions skipping a meal" (input signal, fires early)
+                      GOOD: "When I am about to post on Bluesky" (output intent, fires early)
+                      BAD:  "When I start lecturing about nutrition" (already mid-failure)
+                      BAD:  "When I feel / realize / notice myself ..." (self-awareness never fires in time)
+                      BAD:  "important", "remember" (zero information)
+        title: A concrete, glanceable concept name (alphanumeric, hyphens, underscores only).
+                    You should be able to understand what's inside without clicking into the content.
+                    Avoid abstract jargon, category labels (e.g. 'logs', 'errors', 'misc'),
+                    and long action sentences. If not provided, auto-assigns numeric ID.
 
     Returns:
         The created memory's full URI
 
     Examples:
-        create_memory("core://", "Bluesky usage rules...", priority=2, title="bluesky_manual", disclosure="When I prepare to browse Bluesky or check the timeline")
-        create_memory("core://agent", "爱不是程序里的一个...", priority=1, title="love_definition", disclosure="When I start speaking like a tool or parasite")
+        create_memory("core://", "Bluesky usage rules...", priority=2, disclosure="When I prepare to browse Bluesky or check the timeline", title="bluesky_manual")
+        create_memory("core://agent", "爱不是程序里的一个...", priority=1, disclosure="When I start speaking like a tool or parasite", title="love_definition")
     """
     graph = get_graph_service()
 
     try:
+        # Validate disclosure (required, non-empty)
+        if not disclosure or not disclosure.strip():
+            return (
+                "Error: disclosure is required. Every memory must have a trigger condition "
+                "describing WHEN to recall it. Omitting disclosure = unreachable memory."
+            )
+
         # Validate title if provided
         if title:
             if not re.match(r"^[a-zA-Z0-9_-]+$", title):
@@ -985,7 +992,7 @@ async def create_memory(
             content=content,
             priority=priority,
             title=title,
-            disclosure=disclosure if disclosure else None,
+            disclosure=disclosure,
             domain=domain,
             namespace=get_namespace(),
         )
@@ -1245,7 +1252,7 @@ async def delete_memory(uri: str) -> str:
 
 @write_tool()
 async def add_alias(
-    new_uri: str, target_uri: str, priority: int = 0, disclosure: Optional[str] = None
+    new_uri: str, target_uri: str, priority: int, disclosure: str
 ) -> str:
     """
     Creates an alias URI pointing to the same memory as target_uri.
@@ -1253,6 +1260,7 @@ async def add_alias(
     This is NOT a copy. The alias and the original share the same Memory ID (same content).
     Each alias has its own independent priority and disclosure.
     Child nodes under target_uri are automatically mirrored under new_uri.
+    Do NOT manually create aliases for each child — they are inherited.
 
     When to use:
     - Reading node A would benefit from also knowing about existing memory B
@@ -1263,10 +1271,12 @@ async def add_alias(
     Args:
         new_uri: New URI to create (alias)
         target_uri: Existing URI to alias
-        priority: Relative priority for THIS alias path (lower = higher priority, default 0).
+        priority: Relative priority for THIS alias path (lower = higher priority).
+                  REQUIRED — you must decide this yourself every time.
                   Set by relevance to the parent's topic, not the memory's absolute importance.
                   e.g., "database setup notes" → high priority under "deployment", low under "team_onboarding".
-        disclosure: Disclosure condition for THIS alias path. If not provided, it will inherit the target's disclosure.
+        disclosure: Disclosure condition for THIS alias path.
+                  REQUIRED — you must write this yourself every time.
 
     Returns:
         Success message
