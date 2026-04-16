@@ -913,7 +913,14 @@ async def _generate_memory_index_view(domain_filter: Optional[str] = None) -> st
             f"# Domain Filter: {domain_filter}"
             if domain_filter
             else "# Domain Filter: None (All Domains)",
-            f"# Total: {unique_nodes_count} unique nodes (aliases hidden for clarity)",
+            f"# Total: {unique_nodes_count} unique nodes",
+            "#",
+            "# ⚠️ ATTENTION (LLM):",
+            "# This index ONLY shows ONE primary path per memory node.",
+            "# Other aliases, triggers, and child nodes located under those hidden aliases ARE NOT SHOWN HERE.",
+            "# DO NOT assume the children shown here are the ONLY children of a node.",
+            "# To see ALL paths, aliases, and triggers for a specific memory, you MUST use `read_memory()` on its URI.",
+            "#",
             "# Legend: [#ID] = Memory ID, [★N] = priority (lower = higher)",
             "",
         ]
@@ -1070,8 +1077,9 @@ async def _generate_diagnostic_view(days_stale: int = 30, max_children: int = 10
         
         stale_nodes = diagnostics.get("stale_nodes", [])
         crowded_nodes = diagnostics.get("crowded_nodes", [])
+        orphaned_nodes = diagnostics.get("orphaned_nodes", [])
 
-        if not stale_nodes and not crowded_nodes:
+        if not stale_nodes and not crowded_nodes and not orphaned_nodes:
             return "No issues found. Memory system is healthy."
 
         lines = [
@@ -1083,7 +1091,7 @@ async def _generate_diagnostic_view(days_stale: int = 30, max_children: int = 10
         if stale_nodes:
             lines.extend([
                 "## 1. Stale Memories",
-                f"Nodes not accessed within their priority threshold.",
+                "Nodes not accessed within their priority threshold.",
                 f"Thresholds: Priority 0 (<3 days), Priority 1 (<7 days), Priority 2 (<14 days), Others (<{days_stale} days).",
                 ""
             ])
@@ -1119,6 +1127,21 @@ async def _generate_diagnostic_view(days_stale: int = 30, max_children: int = 10
                 lines.append(f"{i}. {node['uri']} ({node['child_count']} children)")
             lines.append("")
 
+        if orphaned_nodes:
+            lines.extend([
+                "## 3. Orphaned Nodes",
+                "Nodes whose parent path no longer exists (broken path chain).",
+                "Use `read_memory` with the URI to inspect, then `add_alias` to re-parent or `delete_memory` to remove.",
+                ""
+            ])
+            for i, node in enumerate(orphaned_nodes, 1):
+                memory_id_str = f"Memory ID: {node['memory_id']}" if node['memory_id'] else "No active memory"
+                lines.append(f"{i}. {node['uri']}")
+                lines.append(f"   {memory_id_str} | Created: {node['created_at'][:10] if node['created_at'] else 'Unknown'}")
+                if node.get("snippet"):
+                    lines.append(f"   Snippet: {node['snippet']}")
+                lines.append("")
+
         return "\n".join(lines).strip()
 
     except Exception as e:
@@ -1144,7 +1167,7 @@ async def read_memory(uri: str) -> str:
     - system://recent : Shows recently modified memories (default: 10).
     - system://recent/N : Shows the N most recently modified memories (e.g. system://recent/20).
     - system://glossary : Shows all glossary keywords and their bound nodes.
-    - system://diagnostic : Generates a diagnostic report of stale and crowded nodes.
+    - system://diagnostic : Generates a diagnostic report of stale, crowded, and orphaned nodes.
 
     Note: Same Memory ID = same content (alias). Different ID + similar content = redundant content.
 
@@ -1591,7 +1614,28 @@ async def add_alias(
             after_state=result.get("rows_after", {}),
         )
 
-        return f"Success: Alias '{result['new_uri']}' now points to same memory as '{result['target_uri']}'"
+        msg = f"Success: Alias '{result['new_uri']}' now points to same memory as '{result['target_uri']}'"
+
+        node_uuid = result.get("node_uuid")
+        if node_uuid:
+            all_paths = await graph.get_paths_for_node(node_uuid, namespace=get_namespace())
+            new_parent_dir = "/".join(new_path.split("/")[:-1])
+            siblings = []
+            for p in all_paths:
+                if p["domain"] == new_domain:
+                    p_parent = "/".join(p["path"].split("/")[:-1])
+                    if p_parent == new_parent_dir:
+                        siblings.append(f"'{p['uri']}'")
+            
+            if len(siblings) > 1:
+                msg += (
+                    f"\n\n⚠ DUPLICATE SIBLING WARNING: This node now appears {len(siblings)} times "
+                    f"under the same parent directory: {', '.join(siblings)}.\n"
+                    f"If you are renaming/moving, delete the old path now.\n"
+                    f"If not, you probably created a redundant alias — consider removing one."
+                )
+
+        return msg
 
     except ValueError as e:
         return f"Error: {str(e)}"

@@ -539,9 +539,43 @@ class GraphService:
                             "child_count": count
                         }
 
+            # 3. Orphaned Paths (paths where the parent path does not exist)
+            all_paths_stmt = (
+                select(Path.domain, Path.path, Node, Memory)
+                .join(Node, Node.uuid == Path.node_uuid)
+                .outerjoin(Memory, and_(Memory.node_uuid == Node.uuid, Memory.deprecated == False))
+                .where(Path.namespace == namespace)
+            )
+            all_paths_result = await session.execute(all_paths_stmt)
+            paths_dict = {}
+            for domain, path_str, node, memory in all_paths_result.all():
+                paths_dict[(domain, path_str)] = (node, memory)
+
+            orphaned_nodes = []
+            for (domain, path_str), (node, memory) in paths_dict.items():
+                if "/" in path_str:
+                    parent_path_str = path_str.rsplit("/", 1)[0]
+                    if (domain, parent_path_str) not in paths_dict:
+                        snippet = ""
+                        memory_id = None
+                        if memory:
+                            memory_id = memory.id
+                            if memory.content:
+                                snippet = memory.content[:50].replace('\n', ' ') + "..." if len(memory.content) > 50 else memory.content.replace('\n', ' ')
+                        
+                        orphaned_nodes.append({
+                            "uuid": node.uuid,
+                            "uri": f"{domain}://{path_str}",
+                            "created_at": node.created_at.isoformat() if node.created_at else None,
+                            "last_accessed_at": node.last_accessed_at.isoformat() if node.last_accessed_at else None,
+                            "memory_id": memory_id,
+                            "snippet": snippet
+                        })
+
             return {
                 "stale_nodes": sorted(list(stale_nodes.values()), key=lambda x: x.get("last_accessed_at") or x.get("created_at") or ""),
-                "crowded_nodes": sorted(list(crowded_parents.values()), key=lambda x: x["child_count"], reverse=True)
+                "crowded_nodes": sorted(list(crowded_parents.values()), key=lambda x: x["child_count"], reverse=True),
+                "orphaned_nodes": sorted(orphaned_nodes, key=lambda x: x.get("created_at") or "")
             }
 
     # =========================================================================
