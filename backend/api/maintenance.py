@@ -96,7 +96,7 @@ async def clear_access_logs(req: ClearLogsRequest):
         stmt = delete(MemoryAccessLog).where(MemoryAccessLog.namespace == ns)
         
         if req.keep_days and req.keep_days > 0:
-            cutoff = datetime.utcnow() - timedelta(days=req.keep_days)
+            cutoff = datetime.now() - timedelta(days=req.keep_days)
             stmt = stmt.where(MemoryAccessLog.accessed_at < cutoff)
             
         result = await session.execute(stmt)

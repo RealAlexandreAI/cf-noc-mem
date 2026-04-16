@@ -17,7 +17,6 @@ from sqlalchemy.exc import IntegrityError
 
 from .models import (
     Node,
-    Edge,
     Path,
     Memory,
     GlossaryKeyword,
@@ -143,30 +142,26 @@ class GlossaryService:
                     Memory.content,
                 )
                 .select_from(GlossaryKeyword)
-                .join(Node, Node.uuid == GlossaryKeyword.node_uuid)
-                .outerjoin(
-                    Edge, Edge.child_uuid == Node.uuid
-                )
             )
 
             if not search_all_namespaces:
                 stmt = stmt.outerjoin(
                     Path,
                     and_(
-                        Path.edge_id == Edge.id,
+                        Path.node_uuid == GlossaryKeyword.node_uuid,
                         Path.namespace == namespace,
                     ),
                 ).where(GlossaryKeyword.namespace == namespace)
             else:
                 stmt = stmt.outerjoin(
                     Path,
-                    Path.edge_id == Edge.id,
+                    Path.node_uuid == GlossaryKeyword.node_uuid,
                 )
 
             stmt = stmt.outerjoin(
                 Memory,
                 and_(
-                    Memory.node_uuid == Node.uuid,
+                    Memory.node_uuid == GlossaryKeyword.node_uuid,
                     Memory.deprecated == False,
                 ),
             ).order_by(GlossaryKeyword.keyword, Path.domain, Path.path)
@@ -261,11 +256,10 @@ class GlossaryService:
                     Path.path,
                 )
                 .select_from(GlossaryKeyword)
-                .join(Edge, Edge.child_uuid == GlossaryKeyword.node_uuid)
                 .join(
                     Path,
                     and_(
-                        Path.edge_id == Edge.id,
+                        Path.node_uuid == GlossaryKeyword.node_uuid,
                         Path.namespace == namespace,
                     ),
                 )

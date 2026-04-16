@@ -820,7 +820,7 @@ async def _generate_boot_memory_view() -> str:
 
     for uri in CORE_MEMORY_URIS:
         try:
-            content = await _fetch_and_format_memory(uri)
+            content = await _fetch_and_format_memory(uri, track_access=True)
             results.append(content)
             loaded += 1
         except Exception as e:
@@ -1054,6 +1054,78 @@ async def _generate_glossary_index_view() -> str:
 
 
 # =============================================================================
+# Diagnostic View
+# =============================================================================
+
+
+async def _generate_diagnostic_view(days_stale: int = 30, max_children: int = 10) -> str:
+    """Generate a diagnostic report of the memory graph."""
+    graph = get_graph_service()
+
+    try:
+        priority_thresholds = {0: 3, 1: 7, 2: 14}
+        diagnostics = await graph.get_diagnostics(
+            namespace=get_namespace(), days_stale=days_stale, max_children=max_children, priority_thresholds=priority_thresholds
+        )
+        
+        stale_nodes = diagnostics.get("stale_nodes", [])
+        crowded_nodes = diagnostics.get("crowded_nodes", [])
+
+        if not stale_nodes and not crowded_nodes:
+            return "No issues found. Memory system is healthy."
+
+        lines = [
+            "# Memory System Diagnostics",
+            f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            ""
+        ]
+
+        if stale_nodes:
+            lines.extend([
+                "## 1. Stale Memories",
+                f"Nodes not accessed within their priority threshold.",
+                f"Thresholds: Priority 0 (<3 days), Priority 1 (<7 days), Priority 2 (<14 days), Others (<{days_stale} days).",
+                ""
+            ])
+            
+            # Sort stale nodes by priority (ascending, so 0 is first) and then by stale_days (descending)
+            # Priorities might be None, so handle that gracefully.
+            sorted_stale = sorted(
+                stale_nodes, 
+                key=lambda x: (x.get('priority') if x.get('priority') is not None else 999, -x.get('stale_days', 0))
+            )
+            
+            for i, node in enumerate(sorted_stale, 1):
+                last_acc = node.get("last_accessed_at")
+                stale_days = node.get("stale_days")
+                threshold = node.get("threshold_days", days_stale)
+                
+                if last_acc:
+                    date_str = f"Last Accessed: {last_acc[:10]}"
+                else:
+                    date_str = "Never accessed (since tracking began)"
+                    
+                lines.append(f"{i}. {node['uri']}")
+                lines.append(f"   Priority: {node['priority']} | Stale for: ~{stale_days} days (Threshold: {threshold} days) | {date_str}")
+            lines.append("")
+
+        if crowded_nodes:
+            lines.extend([
+                "## 2. Crowded Parent Nodes",
+                f"Nodes with more than {max_children} children.",
+                ""
+            ])
+            for i, node in enumerate(crowded_nodes, 1):
+                lines.append(f"{i}. {node['uri']} ({node['child_count']} children)")
+            lines.append("")
+
+        return "\n".join(lines).strip()
+
+    except Exception as e:
+        return f"Error generating diagnostic view: {str(e)}"
+
+
+# =============================================================================
 # MCP Tools
 # =============================================================================
 
@@ -1072,6 +1144,7 @@ async def read_memory(uri: str) -> str:
     - system://recent : Shows recently modified memories (default: 10).
     - system://recent/N : Shows the N most recently modified memories (e.g. system://recent/20).
     - system://glossary : Shows all glossary keywords and their bound nodes.
+    - system://diagnostic : Generates a diagnostic report of stale and crowded nodes.
 
     Note: Same Memory ID = same content (alias). Different ID + similar content = redundant content.
 
@@ -1104,6 +1177,10 @@ async def read_memory(uri: str) -> str:
     # system://glossary
     if stripped == "system://glossary":
         return await _generate_glossary_index_view()
+
+    # system://diagnostic
+    if stripped == "system://diagnostic":
+        return await _generate_diagnostic_view()
 
     # system://recent or system://recent/N
     stripped = uri.strip()
