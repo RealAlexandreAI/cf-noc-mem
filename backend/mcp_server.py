@@ -1225,6 +1225,27 @@ async def read_memory(uri: str) -> str:
         return f"Error: {str(e)}"
 
 
+_UNESCAPED_NEWLINE_RE = re.compile(r"(?<!\\)\\n")
+
+
+def _normalize_literal_newlines(text: str) -> str:
+    """Convert literal ``\\n`` sequences to real newlines.
+
+    Only touches unescaped ``\\n`` (i.e. skips ``\\\\n``).
+    This is intentionally a dumb converter with no heuristic — the caller
+    is responsible for deciding *when* to apply it.
+    """
+    return _UNESCAPED_NEWLINE_RE.sub("\n", text)
+
+
+def _format_normalization_preview(text: str, limit: int = 160) -> str:
+    """Render text in a single-line preview for system notices."""
+    preview = repr(text)[1:-1]
+    if len(preview) > limit:
+        preview = preview[: limit - 3] + "..."
+    return preview
+
+
 @write_tool()
 async def create_memory(
     parent_uri: str,
@@ -1374,6 +1395,8 @@ async def update_memory(
     graph = get_graph_service()
 
     try:
+        notices: List[str] = []
+
         # Parse URI
         domain, path = parse_uri(uri)
         full_uri = make_uri(domain, path)
@@ -1415,43 +1438,71 @@ async def update_memory(
             if count == 1:
                 content = current_content.replace(old_string, new_string, 1)
             else:
-                # Exact match failed — fall back to normalized comparison
-                # (handles curly/straight quotes, dash variants, trailing
-                # whitespace, and consecutive-space collapse).
-                patched = _try_normalized_patch(
-                    current_content, old_string, new_string
-                )
-                if patched is None:
-                    # Diagnose why: use the same _find_valid_matches logic
-                    # so the error message reflects what _try_normalized_patch
-                    # actually sees.
-                    norm_content = _normalize_with_positions(current_content)[0]
-                    total_valid = 0
-                    for _preserve in (True, False):
-                        _norm_old = _normalize_with_positions(
-                            old_string, preserve_first_line_indent=_preserve
-                        )[0]
-                        if _norm_old:
-                            total_valid += len(_find_valid_matches(
-                                norm_content, _norm_old,
-                                indent_collapsed=(not _preserve),
-                            ))
+                # Exact match failed — try literal-newline normalization fallback.
+                # LLMs sometimes serialize multiline content with literal \n tokens
+                # instead of real newlines.  We normalize old_string and check whether
+                # the result uniquely matches the stored content.  This is validated
+                # against ground truth (the actual stored text), not a heuristic.
+                norm_old = _normalize_literal_newlines(old_string) if "\\n" in old_string else None
+                if norm_old is not None and norm_old != old_string:
+                    norm_count = current_content.count(norm_old)
+                    if norm_count == 1:
+                        norm_new = _normalize_literal_newlines(new_string) if new_string and "\\n" in new_string else new_string
+                        content = current_content.replace(norm_old, norm_new, 1)
+                        for field_name, original, normalized in [
+                            ("old_string", old_string, norm_old),
+                            ("new_string", new_string, norm_new),
+                        ]:
+                            if original != normalized:
+                                orig_preview = _format_normalization_preview(original)
+                                norm_preview = _format_normalization_preview(normalized)
+                                notices.append(
+                                    f"[SYSTEM NOTICE]: Auto-normalized `{field_name}` — "
+                                    f"converted literal '\\n' sequences to real newlines "
+                                    f"because they matched the stored content.\n"
+                                    f"- Original: `{orig_preview}`\n"
+                                    f"- Normalized: `{norm_preview}`"
+                                )
 
-                    if total_valid == 0:
-                        return (
-                            f"Error: old_string not found in memory content at "
-                            f"'{full_uri}', even after Unicode normalization "
-                            f"(quotes, dashes, whitespace). "
-                            f"Re-read the memory and copy the exact text."
-                        )
-                    
-                    return (
-                        f"Error: old_string found multiple times in "
-                        f"memory content at '{full_uri}' (after Unicode "
-                        f"normalization). Provide more surrounding context "
-                        f"to make it unique."
+                if content is None:
+                    # Still no match — fall back to Unicode normalized comparison
+                    # (handles curly/straight quotes, dash variants, trailing
+                    # whitespace, and consecutive-space collapse).
+                    patched = _try_normalized_patch(
+                        current_content, old_string, new_string
                     )
-                content = patched
+                    if patched is not None:
+                        content = patched
+                    else:
+                        # Diagnose why: use the same _find_valid_matches logic
+                        # so the error message reflects what _try_normalized_patch
+                        # actually sees.
+                        norm_content = _normalize_with_positions(current_content)[0]
+                        total_valid = 0
+                        for _preserve in (True, False):
+                            _norm_old = _normalize_with_positions(
+                                old_string, preserve_first_line_indent=_preserve
+                            )[0]
+                            if _norm_old:
+                                total_valid += len(_find_valid_matches(
+                                    norm_content, _norm_old,
+                                    indent_collapsed=(not _preserve),
+                                ))
+
+                        if total_valid == 0:
+                            return (
+                                f"Error: old_string not found in memory content at "
+                                f"'{full_uri}', even after Unicode normalization "
+                                f"(quotes, dashes, whitespace). "
+                                f"Re-read the memory and copy the exact text."
+                            )
+                        
+                        return (
+                            f"Error: old_string found multiple times in "
+                            f"memory content at '{full_uri}' (after Unicode "
+                            f"normalization). Provide more surrounding context "
+                            f"to make it unique."
+                        )
 
             if content == current_content:
                 return (
@@ -1499,7 +1550,10 @@ async def update_memory(
             after_state=result.get("rows_after", {}),
         )
 
-        return f"Success: Memory at '{full_uri}' updated"
+        message = f"Success: Memory at '{full_uri}' updated"
+        if notices:
+            message += "\n\n" + "\n\n".join(notices)
+        return message
 
     except ValueError as e:
         return f"Error: {str(e)}"

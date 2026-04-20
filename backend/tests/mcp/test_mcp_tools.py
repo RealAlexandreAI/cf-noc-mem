@@ -268,3 +268,121 @@ async def test_update_memory_normalized_ambiguous_returns_error(
     )
     assert "Error" in result
     assert "normalization" in result.lower()
+
+
+async def test_create_memory_preserves_all_content_verbatim(
+    mcp_module, graph_service
+):
+    """create_memory never normalizes — whatever you pass is stored as-is."""
+    for title_suffix, content in [
+        ("backslash", r"Windows path: C:\tmp\test and regex token: foo\\nbar"),
+        ("escaped_multiline", "# Title\\n\\n- alpha\\n- beta"),
+        ("single_token", r"Use \n to represent a newline in regex examples."),
+        ("code_literal", 'payload = "line1\\n\\nline2"'),
+        ("regex", "^(?:[A-Z]\\n)+$"),
+        ("plain_prose", "line one\\nline two"),
+    ]:
+        result = await mcp_module.create_memory(
+            "core://",
+            content,
+            priority=1,
+            title=f"verbatim_{title_suffix}",
+            disclosure="When verifying verbatim storage",
+        )
+        assert "Success" in result, f"Failed for {title_suffix}"
+        assert "SYSTEM NOTICE" not in result, f"Unexpected normalization for {title_suffix}"
+        memory = await graph_service.get_memory_by_path(f"verbatim_{title_suffix}", "core")
+        assert memory["content"] == content, f"Content mismatch for {title_suffix}"
+
+
+async def test_update_memory_preserves_literal_backslash_sequences(
+    mcp_module, graph_service
+):
+    original_content = r"Store C:\tmp\test and regex foo\\nbar literally."
+    await graph_service.create_memory(
+        parent_path="",
+        content=original_content,
+        priority=1,
+        title="literal_backslash_update",
+    )
+
+    result = await mcp_module.update_memory(
+        "core://literal_backslash_update",
+        old_string=r"C:\tmp\test",
+        new_string=r"D:\logs\test",
+    )
+
+    assert result == "Success: Memory at 'core://literal_backslash_update' updated"
+    memory = await graph_service.get_memory_by_path("literal_backslash_update", "core")
+    assert memory["content"] == r"Store D:\logs\test and regex foo\\nbar literally."
+
+
+async def test_update_memory_normalizes_escaped_newlines_on_patch_fallback(
+    mcp_module, graph_service
+):
+    """When stored content has real newlines but old_string has literal \\n,
+    exact match fails, then the newline-normalization fallback kicks in."""
+    await graph_service.create_memory(
+        parent_path="",
+        content="# Title\n\n- alpha\n- beta",
+        priority=1,
+        title="escaped_multiline_update",
+    )
+
+    result = await mcp_module.update_memory(
+        "core://escaped_multiline_update",
+        old_string="# Title\\n\\n- alpha\\n- beta",
+        new_string="# Title\\n\\n- gamma\\n- delta",
+    )
+
+    assert "Success: Memory at 'core://escaped_multiline_update' updated" in result
+    assert "\n\n[SYSTEM NOTICE]" in result
+    memory = await graph_service.get_memory_by_path("escaped_multiline_update", "core")
+    assert memory["content"] == "# Title\n\n- gamma\n- delta"
+
+
+async def test_update_memory_exact_match_wins_over_normalization(
+    mcp_module, graph_service
+):
+    """When stored content literally contains \\n sequences, exact match
+    succeeds and no normalization occurs."""
+    literal_content = 'payload = "line1\\n\\nline2"'
+    await graph_service.create_memory(
+        parent_path="",
+        content=literal_content,
+        priority=1,
+        title="literal_exact_match",
+    )
+
+    result = await mcp_module.update_memory(
+        "core://literal_exact_match",
+        old_string='payload = "line1\\n\\nline2"',
+        new_string='payload = "line1\\n\\nline2\\nline3"',
+    )
+
+    assert "Success" in result
+    assert "SYSTEM NOTICE" not in result
+    memory = await graph_service.get_memory_by_path("literal_exact_match", "core")
+    assert memory["content"] == 'payload = "line1\\n\\nline2\\nline3"'
+
+
+async def test_update_memory_append_preserves_content_verbatim(
+    mcp_module, graph_service
+):
+    """Append mode never normalizes — whatever you pass is appended as-is."""
+    await graph_service.create_memory(
+        parent_path="",
+        content="Base content",
+        priority=1,
+        title="append_verbatim",
+    )
+
+    result = await mcp_module.update_memory(
+        "core://append_verbatim",
+        append="\\n\\nCode: foo\\n\\nbar",
+    )
+
+    assert "Success" in result
+    assert "SYSTEM NOTICE" not in result
+    memory = await graph_service.get_memory_by_path("append_verbatim", "core")
+    assert memory["content"] == "Base content\\n\\nCode: foo\\n\\nbar"
