@@ -166,12 +166,12 @@ async def test_system_index_isolation(mcp_env):
     await _seed_two_agents()
 
     set_namespace("agent_a")
-    index_a = await read_memory("system://index")
+    index_a = await read_memory("system://index/core")
     assert "my_user" in index_a
     assert "notes" in index_a
 
     set_namespace("agent_b")
-    index_b = await read_memory("system://index")
+    index_b = await read_memory("system://index/core")
     assert "my_user" not in index_b
     assert "notes" not in index_b
 
@@ -331,7 +331,7 @@ async def test_default_namespace_mcp_full_flow(mcp_env):
     assert "Default agent identity" in boot
 
     # Index
-    index = await read_memory("system://index")
+    index = await read_memory("system://index/core")
     assert "agent" in index
     assert "my_user" in index
 

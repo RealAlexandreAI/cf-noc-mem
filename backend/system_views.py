@@ -174,7 +174,9 @@ async def generate_boot_memory_view(core_memory_uris: List[str]) -> str:
     if results:
         output_parts.append("## Contents:")
         output_parts.append("")
-        output_parts.append("For full memory index, use: system://index")
+        output_parts.append(
+            "For a memory index, use: system://index/<domain> (e.g. system://index/core)"
+        )
         output_parts.append("For recent memories, use: system://recent")
         output_parts.extend(results)
     else:
@@ -194,7 +196,10 @@ async def generate_boot_memory_view(core_memory_uris: List[str]) -> str:
 
 async def generate_memory_index_view(domain_filter: Optional[str] = None) -> str:
     """
-    Generate the full memory index (system://index).
+    Generate a memory index view.
+
+    Public callers should use `system://index/<domain>`. Passing `None`
+    keeps the helper usable for internal all-domain views.
 
     Node-centric: each conceptual entity (node_uuid) appears once per domain,
     with aliases within the same domain folded underneath its primary path.

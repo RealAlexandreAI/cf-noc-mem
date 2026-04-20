@@ -434,7 +434,6 @@ async def read_memory(uri: str) -> str:
 
     Special System URIs:
     - system://boot   : [Startup Only] Loads your core memories.
-    - system://index  : Loads a full index of all available memories.
     - system://index/<domain> : Loads an index of memories only under the specified domain (e.g. system://index/writer).
     - system://recent : Shows recently modified memories (default: 10).
     - system://recent/N : Shows the N most recently modified memories (e.g. system://recent/20).
@@ -459,15 +458,17 @@ async def read_memory(uri: str) -> str:
     if uri.strip() == "system://boot":
         return await generate_boot_memory_view(CORE_MEMORY_URIS)
 
-    # system://index or system://index/<domain>
+    # system://index/<domain>
     stripped = uri.strip()
-    if stripped == "system://index" or stripped.startswith("system://index/"):
-        domain_filter = stripped[len("system://index") :].strip("/")
-        if domain_filter and domain_filter not in VALID_DOMAINS:
+    if stripped.startswith("system://index/"):
+        domain_filter = stripped[len("system://index/") :].strip("/")
+        if not domain_filter:
+            return "Error: index command requires a domain (e.g. system://index/core)"
+        if domain_filter not in VALID_DOMAINS:
             return f"Error: Unknown domain '{domain_filter}'. Valid domains: {', '.join(VALID_DOMAINS)}"
-        return await generate_memory_index_view(
-            domain_filter=domain_filter if domain_filter else None
-        )
+        return await generate_memory_index_view(domain_filter=domain_filter)
+    elif stripped == "system://index":
+        return "Error: index command now requires a domain (e.g. system://index/core)"
 
     # system://glossary
     if stripped == "system://glossary":

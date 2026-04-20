@@ -17,11 +17,14 @@ async def test_read_memory_system_views(mcp_module, graph_service):
     boot = await mcp_module.read_memory("system://boot")
     index_view = await mcp_module.read_memory("system://index/core")
     recent = await mcp_module.read_memory("system://recent/5")
+    index_error = await mcp_module.read_memory("system://index")
 
     assert "core://agent" in boot
     assert "core://my_user" in boot
+    assert "system://index/<domain>" in boot
     assert "core://agent" in index_view
     assert "core://my_user" in recent
+    assert "requires a domain" in index_error
 
 
 async def test_diagnostic_view_points_duplicate_aliases_to_delete_memory(mcp_module):

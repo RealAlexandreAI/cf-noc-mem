@@ -340,7 +340,6 @@ The backend manages a full **Node–Memory–Edge–Path** graph topology. The f
 
 #### Special System Entry Points
 *   `system://boot` → **Boot sequence (auto-loads core identity)**
-*   `system://index` → **Full memory index**
 *   `system://index/<domain>` → **Domain-specific memory index** (e.g. `system://index/core`)
 *   `system://recent` → **Recently modified memories**
 *   `system://glossary` → **Glossary (full keyword ↔ node reference map)**
@@ -511,7 +510,7 @@ The AI operates its own memories through **7 tools** via the MCP protocol:
 
 | Tool | Purpose |
 |------|---------|
-| `read_memory` | Read a memory. Supports `system://boot` (boot loading), `system://index` (full index), `system://index/<domain>` (domain-specific index), `system://recent` (recently modified) |
+| `read_memory` | Read a memory. Supports `system://boot` (boot loading), `system://index/<domain>` (domain-specific index), `system://recent` (recently modified) |
 | `create_memory` | Create a new memory under a specified parent node. Supports `priority` (weight) and `disclosure` (recall trigger condition) |
 | `update_memory` | Precisely modify existing memories (Patch mode / Append mode). **No full replacement** — prevents accidental overwrites |
 | `delete_memory` | Sever an access path (does not delete the memory content itself) |

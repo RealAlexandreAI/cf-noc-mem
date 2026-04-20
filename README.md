@@ -319,7 +319,6 @@ Nocturne Memory 采用极简但高可用（High-Availability）的 **SQLite/Post
 
 #### 特殊系统入口
 *   `system://boot` → **启动引导（自动加载核心身份）**
-*   `system://index` → **全量记忆索引**
 *   `system://index/<domain>` → **特定域名记忆索引** (如 `system://index/core`)
 *   `system://recent` → **最近修改的记忆**
 *   `system://glossary` → **豆辞典（全量关键词 ↔ 节点引用映射）**
@@ -490,7 +489,7 @@ AI 通过 MCP 协议获得 **7 个工具**来操作自己的记忆：
 
 | 工具 | 用途 |
 |------|------|
-| `read_memory` | 读取记忆。支持 `system://boot`（启动加载）、`system://index`（全量索引）、`system://index/<domain>`（特定域名索引）、`system://recent`（最近修改） |
+| `read_memory` | 读取记忆。支持 `system://boot`（启动加载）、`system://index/<domain>`（特定域名索引）、`system://recent`（最近修改） |
 | `create_memory` | 在指定父节点下创建新记忆。支持 `priority`（权重）和 `disclosure`（回想触发条件） |
 | `update_memory` | 精确修改已有记忆（Patch 模式 / Append 模式）。**无全量替换**，防止意外覆盖 |
 | `delete_memory` | 切断一条访问路径（不删除记忆正文本体） |
