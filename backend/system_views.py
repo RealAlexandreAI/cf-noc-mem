@@ -390,8 +390,9 @@ async def generate_diagnostic_view(days_stale: int = 30, max_children: int = 10)
         stale_nodes = diagnostics.get("stale_nodes", [])
         crowded_nodes = diagnostics.get("crowded_nodes", [])
         orphaned_nodes = diagnostics.get("orphaned_nodes", [])
+        duplicate_aliases = diagnostics.get("duplicate_aliases", [])
 
-        if not stale_nodes and not crowded_nodes and not orphaned_nodes:
+        if not stale_nodes and not crowded_nodes and not orphaned_nodes and not duplicate_aliases:
             return "No issues found. Memory system is healthy."
 
         lines = [
@@ -437,20 +438,45 @@ async def generate_diagnostic_view(days_stale: int = 30, max_children: int = 10)
                 lines.append(f"{i}. {node['uri']} ({node['child_count']} children)")
             lines.append("")
 
-        if orphaned_nodes:
+        if orphaned_nodes or duplicate_aliases:
             lines.extend([
-                "## 3. Orphaned Nodes",
-                "Nodes whose parent path no longer exists (broken path chain).",
-                "Use `read_memory` with the URI to inspect, then `add_alias` to re-parent or `delete_memory` to remove.",
+                "## 3. Anomaly Diagnostics",
                 ""
             ])
-            for i, node in enumerate(orphaned_nodes, 1):
-                memory_id_str = f"Memory ID: {node['memory_id']}" if node['memory_id'] else "No active memory"
-                lines.append(f"{i}. {node['uri']}")
-                lines.append(f"   {memory_id_str} | Created: {node['created_at'][:10] if node['created_at'] else 'Unknown'}")
-                if node.get("snippet"):
-                    lines.append(f"   Snippet: {node['snippet']}")
-                lines.append("")
+
+            if orphaned_nodes:
+                lines.extend([
+                    "### 3.1 Orphaned Nodes",
+                    "Nodes whose parent path no longer exists (broken path chain).",
+                    "Use `read_memory` with the URI to inspect, then `add_alias` to re-parent or `delete_memory` to remove.",
+                    ""
+                ])
+                for i, node in enumerate(orphaned_nodes, 1):
+                    memory_id_str = f"Memory ID: {node['memory_id']}" if node['memory_id'] else "No active memory"
+                    lines.append(f"{i}. {node['uri']}")
+                    lines.append(f"   {memory_id_str} | Created: {node['created_at'][:10] if node['created_at'] else 'Unknown'}")
+                    if node.get("snippet"):
+                        lines.append(f"   Snippet: {node['snippet']}")
+                    lines.append("")
+
+            if duplicate_aliases:
+                lines.extend([
+                    "### 3.2 Duplicate Aliases under Same Parent",
+                    "A single node has multiple alias paths under the same parent node.",
+                    "Usually caused by accidentally inserting another alias when one already exists.",
+                    "Use `delete_memory` on the redundant alias URI to remove the extra path.",
+                    ""
+                ])
+                for i, item in enumerate(duplicate_aliases, 1):
+                    parent_uri = f"{item['domain']}://{item['parent_path']}" if item['parent_path'] else f"{item['domain']}://"
+                    paths_list = [f"{item['domain']}://{p}" for p in item['paths']]
+                    memory_id_str = item['memory_id'] if item['memory_id'] else "No active memory"
+                    lines.append(f"{i}. Memory ID: {memory_id_str}")
+                    lines.append(f"   Parent: {parent_uri}")
+                    lines.append(f"   Duplicate Paths ({item['count']}):")
+                    for p in paths_list:
+                        lines.append(f"     - {p}")
+                    lines.append("")
 
         return "\n".join(lines).strip()
 

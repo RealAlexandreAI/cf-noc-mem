@@ -15,6 +15,7 @@ This module contains only graph-domain business logic.
 
 import uuid as uuid_lib
 import unicodedata
+from collections import defaultdict
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
 
 from sqlalchemy import (
@@ -551,10 +552,13 @@ class GraphService:
             for domain, path_str, node, memory in all_paths_result.all():
                 paths_dict[(domain, path_str)] = (node, memory)
 
+            parent_node_groups: Dict[tuple, List[str]] = defaultdict(list)
+
             orphaned_nodes = []
             for (domain, path_str), (node, memory) in paths_dict.items():
                 if "/" in path_str:
                     parent_path_str = path_str.rsplit("/", 1)[0]
+                    parent_node_groups[(domain, parent_path_str, node.uuid)].append(path_str)
                     if (domain, parent_path_str) not in paths_dict:
                         snippet = ""
                         memory_id = None
@@ -562,7 +566,7 @@ class GraphService:
                             memory_id = memory.id
                             if memory.content:
                                 snippet = memory.content[:50].replace('\n', ' ') + "..." if len(memory.content) > 50 else memory.content.replace('\n', ' ')
-                        
+
                         orphaned_nodes.append({
                             "uuid": node.uuid,
                             "uri": f"{domain}://{path_str}",
@@ -571,11 +575,27 @@ class GraphService:
                             "memory_id": memory_id,
                             "snippet": snippet
                         })
+                else:
+                    parent_node_groups[(domain, "", node.uuid)].append(path_str)
+
+            duplicate_aliases = []
+            for (domain, parent_path_str, node_uuid), paths_list in parent_node_groups.items():
+                if len(paths_list) > 1:
+                    _, memory = paths_dict[(domain, paths_list[0])]
+                    duplicate_aliases.append({
+                        "uuid": node_uuid,
+                        "memory_id": memory.id if memory else None,
+                        "domain": domain,
+                        "parent_path": parent_path_str,
+                        "paths": paths_list,
+                        "count": len(paths_list)
+                    })
 
             return {
                 "stale_nodes": sorted(list(stale_nodes.values()), key=lambda x: x.get("last_accessed_at") or x.get("created_at") or ""),
                 "crowded_nodes": sorted(list(crowded_parents.values()), key=lambda x: x["child_count"], reverse=True),
-                "orphaned_nodes": sorted(orphaned_nodes, key=lambda x: x.get("created_at") or "")
+                "orphaned_nodes": sorted(orphaned_nodes, key=lambda x: x.get("created_at") or ""),
+                "duplicate_aliases": sorted(duplicate_aliases, key=lambda x: x["count"], reverse=True)
             }
 
     # =========================================================================

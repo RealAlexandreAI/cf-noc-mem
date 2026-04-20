@@ -918,6 +918,20 @@ async def add_alias(
 
         msg = f"Success: Alias '{result['new_uri']}' now points to same memory as '{result['target_uri']}'"
 
+        created_paths = result.get("rows_after", {}).get("paths", [])
+        if len(created_paths) > 1:
+            child_paths = [
+                f"{p['domain']}://{p['path']}" 
+                for p in created_paths 
+                if f"{p['domain']}://{p['path']}" != result['new_uri']
+            ]
+            if child_paths:
+                msg += f"\n\nAutomatically inherited aliases for {len(child_paths)} descendant(s):\n"
+                for cp in child_paths[:10]:
+                    msg += f"- {cp}\n"
+                if len(child_paths) > 10:
+                    msg += f"... and {len(child_paths) - 10} more.\n"
+
         node_uuid = result.get("node_uuid")
         if node_uuid:
             all_paths = await graph.get_paths_for_node(node_uuid, namespace=get_namespace())
