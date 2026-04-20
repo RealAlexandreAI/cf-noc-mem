@@ -377,14 +377,14 @@ async def generate_glossary_index_view() -> str:
         return f"Error generating glossary index: {str(e)}"
 
 
-async def generate_diagnostic_view(days_stale: int = 30, max_children: int = 10) -> str:
-    """Generate a diagnostic report of the memory graph (system://diagnostic)."""
+async def generate_diagnostic_view(domain: str, days_stale: int = 30, max_children: int = 10) -> str:
+    """Generate a diagnostic report of the memory graph (system://diagnostic/<domain>)."""
     graph = get_graph_service()
 
     try:
         priority_thresholds = {0: 3, 1: 7, 2: 14}
         diagnostics = await graph.get_diagnostics(
-            namespace=get_namespace(), days_stale=days_stale, max_children=max_children, priority_thresholds=priority_thresholds
+            namespace=get_namespace(), days_stale=days_stale, max_children=max_children, priority_thresholds=priority_thresholds, domain=domain
         )
 
         stale_nodes = diagnostics.get("stale_nodes", [])
@@ -396,7 +396,7 @@ async def generate_diagnostic_view(days_stale: int = 30, max_children: int = 10)
             return "No issues found. Memory system is healthy."
 
         lines = [
-            "# Memory System Diagnostics",
+            f"# Memory System Diagnostics: {domain}",
             f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             ""
         ]

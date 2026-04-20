@@ -439,7 +439,7 @@ async def read_memory(uri: str) -> str:
     - system://recent : Shows recently modified memories (default: 10).
     - system://recent/N : Shows the N most recently modified memories (e.g. system://recent/20).
     - system://glossary : Shows all glossary keywords and their bound nodes.
-    - system://diagnostic : Generates a diagnostic report of stale, crowded, and orphaned nodes.
+    - system://diagnostic/<domain> : Generates a diagnostic report of stale, crowded, and orphaned nodes for a specific domain.
 
     Note: Same Memory ID = same content (alias). Different ID + similar content = redundant content.
 
@@ -473,9 +473,16 @@ async def read_memory(uri: str) -> str:
     if stripped == "system://glossary":
         return await generate_glossary_index_view()
 
-    # system://diagnostic
-    if stripped == "system://diagnostic":
-        return await generate_diagnostic_view()
+    # system://diagnostic/<domain>
+    if stripped.startswith("system://diagnostic/"):
+        domain_filter = stripped[len("system://diagnostic/") :].strip("/")
+        if not domain_filter:
+            return "Error: diagnostic command requires a domain (e.g. system://diagnostic/core)"
+        if domain_filter not in VALID_DOMAINS:
+            return f"Error: Unknown domain '{domain_filter}'. Valid domains: {', '.join(VALID_DOMAINS)}"
+        return await generate_diagnostic_view(domain=domain_filter)
+    elif stripped == "system://diagnostic":
+        return "Error: diagnostic command now requires a domain (e.g. system://diagnostic/core)"
 
     # system://recent or system://recent/N
     stripped = uri.strip()

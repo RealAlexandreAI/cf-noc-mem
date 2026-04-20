@@ -430,7 +430,7 @@ class GraphService:
 
             return paths
 
-    async def get_diagnostics(self, namespace: str = "", days_stale: int = 30, max_children: int = 10, priority_thresholds: Dict[int, int] = None) -> Dict[str, Any]:
+    async def get_diagnostics(self, namespace: str = "", days_stale: int = 30, max_children: int = 10, priority_thresholds: Dict[int, int] = None, domain: str = None) -> Dict[str, Any]:
         """
         Get a diagnostic report of the memory graph for a given namespace.
         Returns stale nodes and crowded parent nodes.
@@ -462,6 +462,9 @@ class GraphService:
                 .join(Memory, and_(Memory.node_uuid == Node.uuid, Memory.deprecated == False))
                 .where(Path.namespace == namespace)
             )
+            if domain:
+                all_nodes_stmt = all_nodes_stmt.where(Path.domain == domain)
+            
             all_nodes_result = await session.execute(all_nodes_stmt)
 
             stale_nodes = {}
@@ -509,7 +512,12 @@ class GraphService:
                 select(Edge.parent_uuid, func.count(Edge.child_uuid.distinct()).label("child_count"))
                 .join(Path, Path.edge_id == Edge.id)
                 .where(Path.namespace == namespace)
-                .group_by(Edge.parent_uuid)
+            )
+            if domain:
+                crowded_stmt = crowded_stmt.where(Path.domain == domain)
+            
+            crowded_stmt = (
+                crowded_stmt.group_by(Edge.parent_uuid)
                 .having(func.count(Edge.child_uuid.distinct()) > max_children)
             )
             crowded_result = await session.execute(crowded_stmt)
@@ -520,7 +528,7 @@ class GraphService:
                     # special case for root
                     crowded_parents[parent_uuid] = {
                         "uuid": parent_uuid,
-                        "uri": "core://",
+                        "uri": f"{domain if domain else 'core'}://",
                         "title": "(root)",
                         "child_count": count
                     }
@@ -528,8 +536,12 @@ class GraphService:
                     path_stmt = (
                         select(Path)
                         .where(Path.node_uuid == parent_uuid, Path.namespace == namespace)
-                        .limit(1)
                     )
+                    if domain:
+                        path_stmt = path_stmt.where(Path.domain == domain)
+                        
+                    path_stmt = path_stmt.limit(1)
+                    
                     path_res = await session.execute(path_stmt)
                     path_obj = path_res.scalar_one_or_none()
                     if path_obj:
@@ -547,6 +559,9 @@ class GraphService:
                 .outerjoin(Memory, and_(Memory.node_uuid == Node.uuid, Memory.deprecated == False))
                 .where(Path.namespace == namespace)
             )
+            if domain:
+                all_paths_stmt = all_paths_stmt.where(Path.domain == domain)
+            
             all_paths_result = await session.execute(all_paths_stmt)
             paths_dict = {}
             for domain, path_str, node, memory in all_paths_result.all():

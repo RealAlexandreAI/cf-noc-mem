@@ -39,7 +39,7 @@ async def test_diagnostic_view_points_duplicate_aliases_to_delete_memory(mcp_mod
         disclosure="When testing duplicate aliases",
     )
 
-    diagnostic = await mcp_module.read_memory("system://diagnostic")
+    diagnostic = await mcp_module.read_memory("system://diagnostic/core")
 
     assert "### 3.2 Duplicate Aliases under Same Parent" in diagnostic
     assert "Use `delete_memory` on the redundant alias URI to remove the extra path." in diagnostic
