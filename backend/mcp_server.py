@@ -20,9 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
-import unicodedata
 import webbrowser
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from dotenv import load_dotenv, find_dotenv
@@ -38,6 +36,21 @@ from db import (
 )
 from db.namespace import get_namespace
 from db.snapshot import get_changeset_store
+from text_patch import (
+    normalize_with_positions,
+    find_valid_matches,
+    try_normalized_patch,
+    normalize_literal_newlines,
+    format_normalization_preview,
+)
+from system_views import (
+    fetch_and_format_memory,
+    generate_boot_memory_view,
+    generate_memory_index_view,
+    generate_recent_memories_view,
+    generate_glossary_index_view,
+    generate_diagnostic_view,
+)
 import contextlib
 
 # Load environment variables
@@ -406,747 +419,6 @@ def write_tool():
     return decorator
 
 
-# =============================================================================
-# Text Normalization for Patch Matching
-# =============================================================================
-# When the LLM reads memory content and re-emits it as old_string, subtle
-# character-level differences creep in (curly vs straight quotes, dash
-# variants, trailing whitespace, consecutive space collapse).  These helpers
-# let update_memory fall back to a normalized comparison when the exact match
-# fails, while keeping a position map so the replacement targets the correct
-# range in the original content.
-# =============================================================================
-
-_NORM_CHAR_MAP = str.maketrans(
-    {
-        "\u201c": '"',
-        "\u201d": '"',
-        "\u00ab": '"',
-        "\u00bb": '"',
-        "\uff02": '"',
-        "\u2018": "'",
-        "\u2019": "'",
-        "\u00b4": "'",
-        "\uff07": "'",
-        "\u2013": "-",
-        "\u2014": "-",
-        "\u2015": "-",
-        "\uff0d": "-",
-    }
-)
-
-
-def _normalize_with_positions(
-    text: str,
-    *,
-    preserve_first_line_indent: bool = True,
-) -> Tuple[str, List[int]]:
-    """
-    Normalize *text* for matching and build a position map.
-
-    Returns ``(normalized, pos_map)`` where ``pos_map[i]`` is the index in
-    the **NFC-normalized** input that produced the *i*-th character of the
-    normalized output.
-
-    Steps applied in order:
-
-    1. Unicode NFC (compose decomposed sequences)
-    2. Quote / dash variant → ASCII equivalent  (1-to-1, no position shift)
-    3. Trailing ``[ \\t]`` per line stripped
-    4. Consecutive spaces collapsed to one (leading indentation protected)
-
-    When *preserve_first_line_indent* is ``False``, the very first line's
-    leading whitespace is treated as ordinary inline spacing (collapsed),
-    because the caller is normalizing a snippet (``old_string``) whose first
-    line may start mid-line rather than at a true line beginning.  Lines 2+
-    always preserve their leading indentation regardless of this flag.
-    """
-    text = unicodedata.normalize("NFC", text)
-    substituted = text.translate(_NORM_CHAR_MAP)
-
-    out: List[str] = []
-    pos_map: List[int] = []
-    lines = substituted.split("\n")
-    offset = 0
-
-    for line_idx, original_line in enumerate(lines):
-        if line_idx > 0:
-            out.append("\n")
-            pos_map.append(offset - 1)
-
-        # Handle Windows CRLF: remove \r from the line we process,
-        # but keep it in the original length calculation for offset.
-        line = original_line
-        if line.endswith("\r"):
-            line = line[:-1]
-
-        content_end = len(line.rstrip(" \t"))
-
-        # Protect leading indentation from space-collapsing — except on the
-        # first line when preserve_first_line_indent is False (snippet mode).
-        protect_indent = (line_idx > 0) or preserve_first_line_indent
-        leading_ws = 0
-        if protect_indent:
-            for ci in range(content_end):
-                if line[ci] in (" ", "\t"):
-                    leading_ws += 1
-                else:
-                    break
-
-        prev_space = False
-        for ci in range(content_end):
-            ch = line[ci]
-
-            if ci < leading_ws:
-                # Always preserve leading indentation exactly as-is
-                out.append(ch)
-                pos_map.append(offset + ci)
-                continue
-
-            if ch == " ":
-                if prev_space:
-                    continue
-                prev_space = True
-            else:
-                prev_space = False
-
-            out.append(ch)
-            pos_map.append(offset + ci)
-
-        offset += len(original_line) + 1
-
-    return "".join(out), pos_map
-
-
-def _find_valid_matches(
-    norm_content: str,
-    candidate: str,
-    *,
-    indent_collapsed: bool,
-) -> List[int]:
-    """
-    Find all positions where *candidate* occurs in *norm_content*, rejecting
-    hits that would **slide into the middle of another line's indentation**.
-
-    This guard exists because a space/tab at the start of *candidate* could
-    coincidentally align with part of a deeper indentation block in the
-    content, producing a match that silently corrupts whitespace structure.
-
-    The guard only fires when the hit falls inside a pure-indentation prefix
-    (every character between the line start and the hit position is a space or
-    tab).  If ANY non-whitespace character precedes the hit on the same line,
-    the space is ordinary inline content and the hit is always accepted.
-
-    *indent_collapsed*: whether the candidate's first line had its leading
-    whitespace collapsed (i.e. ``preserve_first_line_indent=False`` was used
-    during normalization).  This affects how strictly we reject indent-region
-    hits:
-
-    - ``False`` (indent preserved): the candidate's leading whitespace was
-      kept verbatim, so a hit inside an indentation region is only invalid if
-      it doesn't start at the line's very beginning (shorter indent sliding
-      into deeper indent).
-    - ``True`` (indent collapsed): the candidate's leading whitespace was
-      already folded, so ANY hit that falls inside an indentation region is
-      suspect — we can't trust the whitespace count to anchor it.
-
-    Returns a list of valid match positions (indices into *norm_content*).
-    """
-    # Check whether the candidate starts with whitespace.  If it doesn't,
-    # there's no risk of sliding into an indentation block, so every hit is
-    # valid and we can skip the per-hit line analysis entirely.
-    first_line = candidate.split("\n", 1)[0]
-    could_slide_into_indent = (
-        bool(first_line) and first_line[0] in (" ", "\t")
-    )
-
-    hits: List[int] = []
-    start = 0
-    while True:
-        pos = norm_content.find(candidate, start)
-        if pos == -1:
-            break
-
-        valid = True
-        if could_slide_into_indent:
-            # Determine whether this hit sits inside the indentation region
-            # of its line (= only whitespace between line-start and hit).
-            line_start = norm_content.rfind("\n", 0, pos)
-            line_start = line_start + 1 if line_start != -1 else 0
-            prefix = norm_content[line_start:pos]
-            hit_is_in_indent_region = (
-                prefix == "" or all(c in (" ", "\t") for c in prefix)
-            )
-
-            if hit_is_in_indent_region:
-                if indent_collapsed:
-                    # Collapsed mode: any indent-region hit is unreliable
-                    # because the candidate's leading ws was folded away.
-                    if prefix != "":
-                        valid = False
-                else:
-                    # Preserved mode: reject only if hit didn't start at
-                    # the line beginning (= shorter indent inside deeper).
-                    if pos != line_start:
-                        valid = False
-
-        if valid:
-            hits.append(pos)
-        start = pos + 1
-
-    return hits
-
-
-def _try_normalized_patch(
-    content: str, old_string: str, new_string: str
-) -> Optional[str]:
-    """
-    Attempt to locate *old_string* inside *content* via normalized comparison.
-
-    Returns the patched content when **exactly one** valid normalized match
-    exists, or ``None`` when no match is found or the match is ambiguous.
-    """
-    # NFC-normalize content so that pos_map indices (which are computed from
-    # the NFC'd text inside _normalize_with_positions) align with the string
-    # we slice from.  Write boundaries also do NFC for new data, but
-    # historical records may still contain decomposed characters.
-    content = unicodedata.normalize("NFC", content)
-    norm_content, pos_map = _normalize_with_positions(content)
-
-    if not pos_map:
-        return None
-
-    # We don't know whether old_string's first line starts at a true line
-    # beginning or mid-line.  Generate candidates for both modes, collect all
-    # valid matches, then require exactly one across both modes combined.
-    all_results: List[Tuple[int, str]] = []  # (position, candidate)
-    for preserve in (True, False):
-        candidate = _normalize_with_positions(
-            old_string, preserve_first_line_indent=preserve
-        )[0]
-        if not candidate:
-            continue
-        valid_hits = _find_valid_matches(
-            norm_content, candidate, indent_collapsed=(not preserve)
-        )
-        for hit in valid_hits:
-            # Deduplicate: same position + same candidate length = same match
-            if not any(h == hit and len(c) == len(candidate) for h, c in all_results):
-                all_results.append((hit, candidate))
-
-    if len(all_results) != 1:
-        return None  # 0 = not found, >1 = ambiguous
-
-    idx, norm_old = all_results[0]
-
-    orig_start = pos_map[idx]
-    match_end = idx + len(norm_old)
-    if match_end < len(pos_map):
-        orig_end = pos_map[match_end]
-    else:
-        orig_end = pos_map[-1] + 1
-
-    # If the matched text starts with \n but the original text has \r\n,
-    # orig_start will point to \n, leaving \r dangling.
-    if (orig_start < len(content) and content[orig_start] == '\n'
-            and orig_start > 0 and content[orig_start - 1] == '\r'):
-        orig_start -= 1
-
-    # If the matched text ends right before a CRLF, preserve the \r.
-    if (orig_end < len(content) and content[orig_end] == '\n'
-            and orig_end > 0 and content[orig_end - 1] == '\r'):
-        orig_end -= 1
-
-    # Normalize new_string's line endings to match the content's convention.
-    if '\n' in new_string:
-        clean = new_string.replace('\r\n', '\n').replace('\r', '\n')
-        if '\r\n' in content:
-            new_string = clean.replace('\n', '\r\n')
-        else:
-            new_string = clean
-
-    return content[:orig_start] + new_string + content[orig_end:]
-
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-
-async def _fetch_and_format_memory(uri: str, track_access: bool = False) -> str:
-    """
-    Internal helper to fetch memory data and return formatted string.
-    Used by read_memory tool.
-    """
-    graph = get_graph_service()
-    glossary = get_glossary_service()
-    domain, path = parse_uri(uri)
-
-    # Get the memory
-    memory = await graph.get_memory_by_path(path, domain, namespace=get_namespace())
-
-    if not memory:
-        raise ValueError(f"URI '{make_uri(domain, path)}' not found.")
-
-    if track_access and memory.get("node_uuid"):
-        import asyncio
-        asyncio.create_task(
-            graph.log_access(
-                memory["node_uuid"],
-                namespace=get_namespace(),
-                context="mcp_read"
-            )
-        )
-
-    children = await graph.get_children(
-        memory["node_uuid"],
-        context_domain=domain,
-        context_path=path,
-        namespace=get_namespace(),
-    )
-
-    # Format output
-    lines = []
-
-    # Build URI from domain and path
-    disp_domain = memory.get("domain", DEFAULT_DOMAIN)
-    disp_path = memory.get("path", "unknown")
-    disp_uri = make_uri(disp_domain, disp_path)
-
-    # Header Block
-    lines.append("=" * 60)
-    lines.append("")
-    lines.append(f"MEMORY: {disp_uri}")
-    lines.append(f"Memory ID: {memory.get('id')}")
-    lines.append(f"Other Aliases: {memory.get('alias_count', 0)}")
-    lines.append(f"Priority: {memory.get('priority', 0)}")
-
-    disclosure = memory.get("disclosure")
-    if disclosure:
-        lines.append(f"Disclosure: {disclosure}")
-    else:
-        lines.append("Disclosure: (not set)")
-
-    node_keywords = await glossary.get_glossary_for_node(memory["node_uuid"], namespace=get_namespace())
-    if node_keywords:
-        lines.append(f"Keywords: [{', '.join(node_keywords)}]")
-    else:
-        lines.append("Keywords: (none)")
-
-    lines.append("")
-    lines.append("=" * 60)
-    lines.append("")
-
-    # Content - directly, no header
-    content = memory.get("content", "(empty)")
-    lines.append(content)
-    lines.append("")
-
-    # Glossary scan: detect glossary keywords present in the content
-    try:
-        glossary_matches = await glossary.find_glossary_in_content(content, namespace=get_namespace())
-        if glossary_matches:
-            current_node_uuid = memory["node_uuid"]
-            
-            # Invert mapping: URI -> list of keywords to save tokens since URIs are much longer than keywords
-            uri_to_keywords = {}
-            for kw, nodes in glossary_matches.items():
-                for n in nodes:
-                    if n["node_uuid"] == current_node_uuid or n["uri"].startswith("unlinked://"):
-                        continue
-                    uri = n["uri"]
-                    if uri not in uri_to_keywords:
-                        uri_to_keywords[uri] = []
-                    if kw not in uri_to_keywords[uri]:
-                        uri_to_keywords[uri].append(kw)
-            
-            lines_to_add = []
-            if uri_to_keywords:
-                # Sort by number of keywords (descending), then alphabetically by URI for stable output
-                for uri, kws in sorted(uri_to_keywords.items(), key=lambda x: (-len(x[1]), x[0])):
-                    sorted_kws = sorted(kws)
-                    kw_str = ", ".join(f"@{k}" for k in sorted_kws)
-                    lines_to_add.append(f"- {kw_str} -> {uri}")
-            
-            if lines_to_add:
-                lines.append("=" * 60)
-                lines.append("")
-                lines.append("GLOSSARY (keywords detected in this content)")
-                lines.append("")
-                lines.extend(lines_to_add)
-                lines.append("")
-    except Exception:
-        pass  # Non-critical; don't break read_memory if glossary scan fails
-
-    if children:
-        lines.append("=" * 60)
-        lines.append("")
-        lines.append("CHILD MEMORIES (Use 'read_memory' with URI to access)")
-        lines.append("")
-        lines.append("=" * 60)
-        lines.append("")
-
-        for child in children:
-            child_domain = child.get("domain", disp_domain)
-            child_path = child.get("path", "")
-            child_uri = make_uri(child_domain, child_path)
-
-            # Show disclosure status and snippet
-            child_disclosure = child.get("disclosure")
-            snippet = child.get("content_snippet", "")
-
-            lines.append(f"- URI: {child_uri}  ")
-            lines.append(f"  Priority: {child.get('priority', 0)}  ")
-
-            if child_disclosure:
-                lines.append(f"  When to recall: {child_disclosure}  ")
-            else:
-                lines.append("  When to recall: (not set)  ")
-                lines.append(f"  Snippet: {snippet}  ")
-
-            lines.append("")
-
-    return "\n".join(lines)
-
-
-async def _generate_boot_memory_view() -> str:
-    """
-    Internal helper to generate the system boot memory view.
-    (Formerly system://core)
-    """
-    results = []
-    loaded = 0
-    failed = []
-
-    for uri in CORE_MEMORY_URIS:
-        try:
-            content = await _fetch_and_format_memory(uri, track_access=True)
-            results.append(content)
-            loaded += 1
-        except Exception as e:
-            # e.g. not found or other error
-            failed.append(f"- {uri}: {str(e)}")
-
-    # Build output
-    output_parts = []
-
-    output_parts.append("# Core Memories")
-    output_parts.append(f"# Loaded: {loaded}/{len(CORE_MEMORY_URIS)} memories")
-    output_parts.append("")
-
-    if failed:
-        output_parts.append("## Failed to load:")
-        output_parts.extend(failed)
-        output_parts.append("")
-
-    if results:
-        output_parts.append("## Contents:")
-        output_parts.append("")
-        output_parts.append("For full memory index, use: system://index")
-        output_parts.append("For recent memories, use: system://recent")
-        output_parts.extend(results)
-    else:
-        output_parts.append("(No core memories loaded. Run migration first.)")
-
-    # Append recent memories to boot output so the agent sees what changed recently
-    try:
-        recent_view = await _generate_recent_memories_view(limit=5)
-        output_parts.append("")
-        output_parts.append("---")
-        output_parts.append("")
-        output_parts.append(recent_view)
-    except Exception:
-        pass  # Non-critical; don't break boot if recent query fails
-
-    return "\n".join(output_parts)
-
-
-async def _generate_memory_index_view(domain_filter: Optional[str] = None) -> str:
-    """
-    Internal helper to generate the full memory index.
-    If domain_filter is provided, limits results to that domain.
-
-    Node-centric: each conceptual entity (node_uuid) appears once per domain,
-    with aliases within the same domain folded underneath its primary path for that domain.
-    """
-    graph = get_graph_service()
-
-    try:
-        paths = await graph.get_all_paths(namespace=get_namespace())
-
-        # --- Step 1: Group all paths by (domain, node_uuid) ---
-        node_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
-        for item in paths:
-            domain = item.get("domain", DEFAULT_DOMAIN)
-            if domain_filter and domain != domain_filter:
-                continue
-            nid = item.get("node_uuid", "")
-            node_groups.setdefault((domain, nid), []).append(item)
-
-        # --- Step 2: Pick primary path per domain and node ---
-        # Primary = shortest depth → lowest priority value → alphabetical URI.
-        entries = []  # list of primary_item
-        for _key, items in node_groups.items():
-            items.sort(
-                key=lambda x: (
-                    x["path"].count("/"),
-                    x.get("priority", 0),
-                    len(x["path"]),
-                    x.get("uri", ""),
-                )
-            )
-            entries.append(items[0])
-
-        # --- Step 3: Organise primaries by domain → top-level segment ---
-        domains: Dict[str, Dict[str, list]] = {}
-        for primary in entries:
-            domain = primary.get("domain", DEFAULT_DOMAIN)
-            domains.setdefault(domain, {})
-            top_level = primary["path"].split("/")[0] if primary["path"] else "(root)"
-            domains[domain].setdefault(top_level, []).append(primary)
-
-        # --- Step 4: Render ---
-        unique_nodes_count = len(set(nid for _, nid in node_groups.keys()))
-        lines = [
-            "# Memory Index",
-            f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"# Domain Filter: {domain_filter}"
-            if domain_filter
-            else "# Domain Filter: None (All Domains)",
-            f"# Total: {unique_nodes_count} unique nodes",
-            "#",
-            "# ⚠️ ATTENTION (LLM):",
-            "# This index ONLY shows ONE primary path per memory node.",
-            "# Other aliases, triggers, and child nodes located under those hidden aliases ARE NOT SHOWN HERE.",
-            "# DO NOT assume the children shown here are the ONLY children of a node.",
-            "# To see ALL paths, aliases, and triggers for a specific memory, you MUST use `read_memory()` on its URI.",
-            "#",
-            "# Legend: [#ID] = Memory ID, [★N] = priority (lower = higher)",
-            "",
-        ]
-
-        for domain_name in sorted(domains.keys()):
-            if domain_filter and domain_name != domain_filter:
-                continue
-            lines.append("# ══════════════════════════════════════")
-            lines.append(f"# DOMAIN: {domain_name}://")
-            lines.append("# ══════════════════════════════════════")
-            lines.append("")
-
-            for group_name in sorted(domains[domain_name].keys()):
-                lines.append(f"## {group_name}")
-                for primary in sorted(
-                    domains[domain_name][group_name],
-                    key=lambda x: x["path"],
-                ):
-                    uri = primary.get("uri", make_uri(domain_name, primary["path"]))
-                    priority = primary.get("priority", 0)
-                    memory_id = primary.get("memory_id", "?")
-                    imp_str = f" [★{priority}]"
-                    lines.append(f"  - {uri} [#{memory_id}]{imp_str}")
-                lines.append("")
-
-        return "\n".join(lines)
-
-    except Exception as e:
-        return f"Error generating index: {str(e)}"
-
-
-async def _generate_recent_memories_view(limit: int = 10) -> str:
-    """
-    Internal helper to generate a view of recently modified memories.
-
-    Queries non-deprecated memories ordered by created_at DESC,
-    only including those that have at least one URI in the paths table.
-
-    Args:
-        limit: Maximum number of results to return
-    """
-    graph = get_graph_service()
-
-    try:
-        results = await graph.get_recent_memories(limit=limit, namespace=get_namespace())
-
-        lines = []
-        lines.append("# Recently Modified Memories")
-        lines.append(f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        lines.append(
-            f"# Showing: {len(results)} most recent entries (requested: {limit})"
-        )
-        lines.append("")
-
-        if not results:
-            lines.append("(No memories found.)")
-            return "\n".join(lines)
-
-        for i, item in enumerate(results, 1):
-            uri = item["uri"]
-            priority = item.get("priority", 0)
-            disclosure = item.get("disclosure")
-            raw_ts = item.get("created_at", "")
-
-            # Truncate timestamp to minute precision: "2026-02-09T20:40"
-            if raw_ts and len(raw_ts) >= 16:
-                modified = raw_ts[:10] + " " + raw_ts[11:16]
-            else:
-                modified = raw_ts or "unknown"
-
-            imp_str = f"★{priority}"
-
-            lines.append(f"{i}. {uri}  [{imp_str}]  modified: {modified}")
-            if disclosure:
-                lines.append(f"   disclosure: {disclosure}")
-            else:
-                lines.append("   disclosure: (NOT SET — consider adding one)")
-            lines.append("")
-
-        return "\n".join(lines)
-
-    except Exception as e:
-        return f"Error generating recent memories view: {str(e)}"
-
-
-# =============================================================================
-# Glossary Index View
-# =============================================================================
-
-
-async def _generate_glossary_index_view() -> str:
-    """Generate a view of all glossary keywords and their bound nodes."""
-    glossary = get_glossary_service()
-
-    try:
-        raw_entries = await glossary.get_all_glossary(namespace=get_namespace())
-        
-        # Filter out truly pathless (unlinked) nodes
-        entries = []
-        for entry in raw_entries:
-            valid_nodes = [
-                node for node in entry.get("nodes", [])
-                if not node.get("uri", "").startswith("unlinked://")
-            ]
-            if valid_nodes:
-                entries.append({
-                    "keyword": entry["keyword"],
-                    "nodes": valid_nodes
-                })
-
-        lines = [
-            "# Glossary Index",
-            f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"# Total: {len(entries)} keywords",
-            "",
-        ]
-
-        if not entries:
-            lines.append("(No glossary keywords defined yet.)")
-            lines.append("")
-            lines.append(
-                "Use manage_triggers(uri, add=[...]) to bind trigger words to memory nodes."
-            )
-            return "\n".join(lines)
-
-        for entry in entries:
-            kw = entry["keyword"]
-            nodes = entry["nodes"]
-            lines.append(f"- {kw}")
-            for node in nodes:
-                lines.append(f"  -> {node['uri']}")
-            lines.append("")
-
-        return "\n".join(lines)
-
-    except Exception as e:
-        return f"Error generating glossary index: {str(e)}"
-
-
-# =============================================================================
-# Diagnostic View
-# =============================================================================
-
-
-async def _generate_diagnostic_view(days_stale: int = 30, max_children: int = 10) -> str:
-    """Generate a diagnostic report of the memory graph."""
-    graph = get_graph_service()
-
-    try:
-        priority_thresholds = {0: 3, 1: 7, 2: 14}
-        diagnostics = await graph.get_diagnostics(
-            namespace=get_namespace(), days_stale=days_stale, max_children=max_children, priority_thresholds=priority_thresholds
-        )
-        
-        stale_nodes = diagnostics.get("stale_nodes", [])
-        crowded_nodes = diagnostics.get("crowded_nodes", [])
-        orphaned_nodes = diagnostics.get("orphaned_nodes", [])
-
-        if not stale_nodes and not crowded_nodes and not orphaned_nodes:
-            return "No issues found. Memory system is healthy."
-
-        lines = [
-            "# Memory System Diagnostics",
-            f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            ""
-        ]
-
-        if stale_nodes:
-            lines.extend([
-                "## 1. Stale Memories",
-                "Nodes not accessed within their priority threshold.",
-                f"Thresholds: Priority 0 (<3 days), Priority 1 (<7 days), Priority 2 (<14 days), Others (<{days_stale} days).",
-                ""
-            ])
-            
-            # Sort stale nodes by priority (ascending, so 0 is first) and then by stale_days (descending)
-            # Priorities might be None, so handle that gracefully.
-            sorted_stale = sorted(
-                stale_nodes, 
-                key=lambda x: (x.get('priority') if x.get('priority') is not None else 999, -x.get('stale_days', 0))
-            )
-            
-            for i, node in enumerate(sorted_stale, 1):
-                last_acc = node.get("last_accessed_at")
-                stale_days = node.get("stale_days")
-                threshold = node.get("threshold_days", days_stale)
-                
-                if last_acc:
-                    date_str = f"Last Accessed: {last_acc[:10]}"
-                else:
-                    date_str = "Never accessed (since tracking began)"
-                    
-                lines.append(f"{i}. {node['uri']}")
-                lines.append(f"   Priority: {node['priority']} | Stale for: ~{stale_days} days (Threshold: {threshold} days) | {date_str}")
-            lines.append("")
-
-        if crowded_nodes:
-            lines.extend([
-                "## 2. Crowded Parent Nodes",
-                f"Nodes with more than {max_children} children.",
-                ""
-            ])
-            for i, node in enumerate(crowded_nodes, 1):
-                lines.append(f"{i}. {node['uri']} ({node['child_count']} children)")
-            lines.append("")
-
-        if orphaned_nodes:
-            lines.extend([
-                "## 3. Orphaned Nodes",
-                "Nodes whose parent path no longer exists (broken path chain).",
-                "Use `read_memory` with the URI to inspect, then `add_alias` to re-parent or `delete_memory` to remove.",
-                ""
-            ])
-            for i, node in enumerate(orphaned_nodes, 1):
-                memory_id_str = f"Memory ID: {node['memory_id']}" if node['memory_id'] else "No active memory"
-                lines.append(f"{i}. {node['uri']}")
-                lines.append(f"   {memory_id_str} | Created: {node['created_at'][:10] if node['created_at'] else 'Unknown'}")
-                if node.get("snippet"):
-                    lines.append(f"   Snippet: {node['snippet']}")
-                lines.append("")
-
-        return "\n".join(lines).strip()
-
-    except Exception as e:
-        return f"Error generating diagnostic view: {str(e)}"
-
 
 # =============================================================================
 # MCP Tools
@@ -1185,7 +457,7 @@ async def read_memory(uri: str) -> str:
     # HARDCODED SYSTEM INTERCEPTIONS
     # These bypass the database lookup to serve dynamic system content
     if uri.strip() == "system://boot":
-        return await _generate_boot_memory_view()
+        return await generate_boot_memory_view(CORE_MEMORY_URIS)
 
     # system://index or system://index/<domain>
     stripped = uri.strip()
@@ -1193,17 +465,17 @@ async def read_memory(uri: str) -> str:
         domain_filter = stripped[len("system://index") :].strip("/")
         if domain_filter and domain_filter not in VALID_DOMAINS:
             return f"Error: Unknown domain '{domain_filter}'. Valid domains: {', '.join(VALID_DOMAINS)}"
-        return await _generate_memory_index_view(
+        return await generate_memory_index_view(
             domain_filter=domain_filter if domain_filter else None
         )
 
     # system://glossary
     if stripped == "system://glossary":
-        return await _generate_glossary_index_view()
+        return await generate_glossary_index_view()
 
     # system://diagnostic
     if stripped == "system://diagnostic":
-        return await _generate_diagnostic_view()
+        return await generate_diagnostic_view()
 
     # system://recent or system://recent/N
     stripped = uri.strip()
@@ -1215,35 +487,14 @@ async def read_memory(uri: str) -> str:
                 limit = max(1, min(100, int(suffix)))
             except ValueError:
                 return f"Error: Invalid number in URI '{uri}'. Usage: system://recent or system://recent/N (e.g. system://recent/20)"
-        return await _generate_recent_memories_view(limit=limit)
+        return await generate_recent_memories_view(limit=limit)
 
     try:
-        content = await _fetch_and_format_memory(uri, track_access=True)
+        content = await fetch_and_format_memory(uri, track_access=True)
         return content
     except Exception as e:
         # Catch both ValueError (not found) and other exceptions
         return f"Error: {str(e)}"
-
-
-_UNESCAPED_NEWLINE_RE = re.compile(r"(?<!\\)\\n")
-
-
-def _normalize_literal_newlines(text: str) -> str:
-    """Convert literal ``\\n`` sequences to real newlines.
-
-    Only touches unescaped ``\\n`` (i.e. skips ``\\\\n``).
-    This is intentionally a dumb converter with no heuristic — the caller
-    is responsible for deciding *when* to apply it.
-    """
-    return _UNESCAPED_NEWLINE_RE.sub("\n", text)
-
-
-def _format_normalization_preview(text: str, limit: int = 160) -> str:
-    """Render text in a single-line preview for system notices."""
-    preview = repr(text)[1:-1]
-    if len(preview) > limit:
-        preview = preview[: limit - 3] + "..."
-    return preview
 
 
 @write_tool()
@@ -1443,19 +694,19 @@ async def update_memory(
                 # instead of real newlines.  We normalize old_string and check whether
                 # the result uniquely matches the stored content.  This is validated
                 # against ground truth (the actual stored text), not a heuristic.
-                norm_old = _normalize_literal_newlines(old_string) if "\\n" in old_string else None
+                norm_old = normalize_literal_newlines(old_string) if "\\n" in old_string else None
                 if norm_old is not None and norm_old != old_string:
                     norm_count = current_content.count(norm_old)
                     if norm_count == 1:
-                        norm_new = _normalize_literal_newlines(new_string) if new_string and "\\n" in new_string else new_string
+                        norm_new = normalize_literal_newlines(new_string) if new_string and "\\n" in new_string else new_string
                         content = current_content.replace(norm_old, norm_new, 1)
                         for field_name, original, normalized in [
                             ("old_string", old_string, norm_old),
                             ("new_string", new_string, norm_new),
                         ]:
                             if original != normalized:
-                                orig_preview = _format_normalization_preview(original)
-                                norm_preview = _format_normalization_preview(normalized)
+                                orig_preview = format_normalization_preview(original)
+                                norm_preview = format_normalization_preview(normalized)
                                 notices.append(
                                     f"[SYSTEM NOTICE]: Auto-normalized `{field_name}` — "
                                     f"converted literal '\\n' sequences to real newlines "
@@ -1468,23 +719,20 @@ async def update_memory(
                     # Still no match — fall back to Unicode normalized comparison
                     # (handles curly/straight quotes, dash variants, trailing
                     # whitespace, and consecutive-space collapse).
-                    patched = _try_normalized_patch(
+                    patched = try_normalized_patch(
                         current_content, old_string, new_string
                     )
                     if patched is not None:
                         content = patched
                     else:
-                        # Diagnose why: use the same _find_valid_matches logic
-                        # so the error message reflects what _try_normalized_patch
-                        # actually sees.
-                        norm_content = _normalize_with_positions(current_content)[0]
+                        norm_content = normalize_with_positions(current_content)[0]
                         total_valid = 0
                         for _preserve in (True, False):
-                            _norm_old = _normalize_with_positions(
+                            _norm_old = normalize_with_positions(
                                 old_string, preserve_first_line_indent=_preserve
                             )[0]
                             if _norm_old:
-                                total_valid += len(_find_valid_matches(
+                                total_valid += len(find_valid_matches(
                                     norm_content, _norm_old,
                                     indent_collapsed=(not _preserve),
                                 ))

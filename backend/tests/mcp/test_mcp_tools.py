@@ -63,141 +63,143 @@ async def test_mcp_tool_flow_covers_crud_alias_triggers_and_search(mcp_module, g
 
 
 # =============================================================================
-# Unit tests for _normalize_with_positions
+# Unit tests for normalize_with_positions
 # =============================================================================
+
+from text_patch import normalize_with_positions, try_normalized_patch
 
 
 class TestNormalizeWithPositions:
-    def test_straight_quotes_unchanged(self, mcp_module):
+    def test_straight_quotes_unchanged(self):
         text = 'She said "hello" to him.'
-        norm, pos_map = mcp_module._normalize_with_positions(text)
+        norm, pos_map = normalize_with_positions(text)
         assert norm == text
         assert len(pos_map) == len(norm)
         assert all(pos_map[i] == i for i in range(len(norm)))
 
-    def test_curly_quotes_normalized(self, mcp_module):
+    def test_curly_quotes_normalized(self):
         text = "She said \u201chello\u201d to him."
-        norm, pos_map = mcp_module._normalize_with_positions(text)
+        norm, pos_map = normalize_with_positions(text)
         assert norm == 'She said "hello" to him.'
         assert pos_map[0] == 0  # 'S'
         assert pos_map[9] == 9  # curly open quote maps to original pos 9
 
-    def test_dash_variants(self, mcp_module):
+    def test_dash_variants(self):
         text = "range\u2014end"
-        norm, _ = mcp_module._normalize_with_positions(text)
+        norm, _ = normalize_with_positions(text)
         assert norm == "range-end"
 
-    def test_trailing_whitespace_stripped(self, mcp_module):
+    def test_trailing_whitespace_stripped(self):
         text = "hello   \nworld"
-        norm, pos_map = mcp_module._normalize_with_positions(text)
+        norm, pos_map = normalize_with_positions(text)
         assert norm == "hello\nworld"
         assert pos_map[5] == 8  # '\n' at original position 8
 
-    def test_consecutive_spaces_collapsed(self, mcp_module):
+    def test_consecutive_spaces_collapsed(self):
         text = "hello    world"
-        norm, pos_map = mcp_module._normalize_with_positions(text)
+        norm, pos_map = normalize_with_positions(text)
         assert norm == "hello world"
         assert pos_map[5] == 5  # first space kept
         assert pos_map[6] == 9  # 'w' at original position 9
 
-    def test_leading_spaces_preserved(self, mcp_module):
+    def test_leading_spaces_preserved(self):
         text = "    - item"
-        norm, pos_map = mcp_module._normalize_with_positions(text)
+        norm, pos_map = normalize_with_positions(text)
         assert norm == "    - item"
         assert len(pos_map) == len(norm)
         assert pos_map[0] == 0
         assert pos_map[3] == 3
         assert pos_map[4] == 4  # '-'
 
-    def test_mixed_leading_and_inline_spaces(self, mcp_module):
+    def test_mixed_leading_and_inline_spaces(self):
         text = "    hello    world"
-        norm, pos_map = mcp_module._normalize_with_positions(text)
+        norm, pos_map = normalize_with_positions(text)
         assert norm == "    hello world"
         assert len(norm) == 15
         assert pos_map[9] == 9  # space after hello
         assert pos_map[10] == 13 # 'w'
 
-    def test_empty_string(self, mcp_module):
-        norm, pos_map = mcp_module._normalize_with_positions("")
+    def test_empty_string(self):
+        norm, pos_map = normalize_with_positions("")
         assert norm == ""
         assert pos_map == []
 
-    def test_multiline_with_mixed_issues(self, mcp_module):
+    def test_multiline_with_mixed_issues(self):
         text = "line1   \n  \u201chello\u201d   \nend"
-        norm, pos_map = mcp_module._normalize_with_positions(text)
+        norm, pos_map = normalize_with_positions(text)
         assert norm == 'line1\n  "hello"\nend'
         assert len(pos_map) == len(norm)
 
-    def test_crlf_normalized_to_lf(self, mcp_module):
+    def test_crlf_normalized_to_lf(self):
         text = "line1\r\nline2\r\nline3"
-        norm, pos_map = mcp_module._normalize_with_positions(text)
+        norm, pos_map = normalize_with_positions(text)
         assert norm == "line1\nline2\nline3"
         assert len(pos_map) == len(norm)
         assert pos_map[5] == 6  # '\n' maps to the original '\n' which is at index 6
         assert pos_map[6] == 7  # 'l' in line2
 
-    def test_backtick_is_not_normalized(self, mcp_module):
+    def test_backtick_is_not_normalized(self):
         text = "Run `update` command."
-        norm, pos_map = mcp_module._normalize_with_positions(text)
+        norm, pos_map = normalize_with_positions(text)
         assert norm == "Run `update` command."
 
 
 # =============================================================================
-# Unit tests for _try_normalized_patch
+# Unit tests for try_normalized_patch
 # =============================================================================
 
 
 class TestTryNormalizedPatch:
-    def test_curly_to_straight_quote_patch(self, mcp_module):
+    def test_curly_to_straight_quote_patch(self):
         content = "She said \u201chello\u201d to him."
-        result = mcp_module._try_normalized_patch(
+        result = try_normalized_patch(
             content, 'She said "hello"', 'She said "goodbye"'
         )
         assert result is not None
         assert '"goodbye"' in result
         assert "to him." in result
 
-    def test_dash_variant_patch(self, mcp_module):
+    def test_dash_variant_patch(self):
         content = "range: 10\u201420"
-        result = mcp_module._try_normalized_patch(
+        result = try_normalized_patch(
             content, "range: 10-20", "range: 10-30"
         )
         assert result is not None
         assert "10-30" in result
 
-    def test_trailing_whitespace_patch(self, mcp_module):
+    def test_trailing_whitespace_patch(self):
         content = "hello   \nworld"
-        result = mcp_module._try_normalized_patch(
+        result = try_normalized_patch(
             content, "hello\nworld", "goodbye\nworld"
         )
         assert result is not None
         assert result.startswith("goodbye\n")
 
-    def test_space_collapse_patch(self, mcp_module):
+    def test_space_collapse_patch(self):
         content = "A    B    C"
-        result = mcp_module._try_normalized_patch(
+        result = try_normalized_patch(
             content, "A B", "X Y"
         )
         assert result is not None
         assert result.startswith("X Y")
         assert result.endswith("C")
 
-    def test_no_match_returns_none(self, mcp_module):
-        result = mcp_module._try_normalized_patch(
+    def test_no_match_returns_none(self):
+        result = try_normalized_patch(
             "hello world", "completely different", "replacement"
         )
         assert result is None
 
-    def test_ambiguous_match_returns_none(self, mcp_module):
+    def test_ambiguous_match_returns_none(self):
         content = 'He said "yes". She said "yes".'
-        result = mcp_module._try_normalized_patch(
+        result = try_normalized_patch(
             content, '"yes"', '"no"'
         )
         assert result is None
 
-    def test_exact_match_still_needed_when_no_normalization_diff(self, mcp_module):
+    def test_exact_match_still_needed_when_no_normalization_diff(self):
         content = "hello world"
-        result = mcp_module._try_normalized_patch(
+        result = try_normalized_patch(
             content, "helo world", "replacement"
         )
         assert result is None
