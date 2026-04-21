@@ -821,7 +821,8 @@ async def update_memory(
 async def delete_memory(uri: str) -> str:
     """
     Deletes a memory by cutting its URI path. The path is permanently removed.
-    If deletion is blocked, remove child memories first.
+    If the node has children, try deleting directly. If deletion would orphan
+    any children, the system will safely return a list of exactly which ones to handle first.
 
     PREREQUISITE: You MUST call read_memory(uri) and read the full content BEFORE deleting.
     Judging by URI/title alone is insufficient. Read the content, confirm it is

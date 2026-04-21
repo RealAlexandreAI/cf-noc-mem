@@ -286,7 +286,9 @@ class GraphService:
             prefix = f"{context_path}/" if context_path else None
 
             child_uuids = {edge.child_uuid for edge, _ in rows}
+            edge_ids = {edge.id for edge, _ in rows}
             approx_children_count_map: Dict[str, int] = {}
+            paths_by_edge_id: Dict[int, List[Path]] = defaultdict(list)
             if child_uuids:
                 count_result = await session.execute(
                     select(Edge.parent_uuid, func.count(Edge.id.distinct()))
@@ -301,6 +303,16 @@ class GraphService:
                     parent_uuid: count for parent_uuid, count in count_result.all()
                 }
 
+            if edge_ids:
+                path_result = await session.execute(
+                    select(Path).where(
+                        Path.namespace == namespace,
+                        Path.edge_id.in_(edge_ids),
+                    )
+                )
+                for p in path_result.scalars().all():
+                    paths_by_edge_id[p.edge_id].append(p)
+
             children = []
             seen = set()
             for edge, memory in rows:
@@ -308,13 +320,7 @@ class GraphService:
                     continue
                 seen.add(edge.child_uuid)
 
-                path_result = await session.execute(
-                    select(Path).where(
-                        Path.namespace == namespace,
-                        Path.edge_id == edge.id,
-                    )
-                )
-                all_paths = path_result.scalars().all()
+                all_paths = paths_by_edge_id[edge.id]
 
                 if node_uuid == ROOT_NODE_UUID and context_domain:
                     has_domain_path = any(p.domain == context_domain for p in all_paths)
@@ -747,7 +753,10 @@ class GraphService:
             safe_prefix = escape_like_literal(exclude_path_prefix)
             exclude_cond = and_(
                 Path.domain == exclude_domain,
-                Path.path.like(f"{safe_prefix}/%", escape="\\"),
+                or_(
+                    Path.path == exclude_path_prefix,
+                    Path.path.like(f"{safe_prefix}/%", escape="\\"),
+                )
             )
             if exclude_namespace is not None:
                 exclude_cond = and_(exclude_cond, Path.namespace == exclude_namespace)
@@ -1542,13 +1551,45 @@ class GraphService:
                 raise ValueError(f"Path '{domain}://{path}' not found")
             _, target_edge, target_node_uuid = target
 
-            # Pre-flight orphan check
+            # Pre-flight orphan check for children
             child_edges_result = await session.execute(
                 select(Edge).where(Edge.parent_uuid == target_node_uuid)
             )
             child_edges = child_edges_result.scalars().all()
 
             would_orphan = []
+            repair_tasks = []
+
+            safe_prefix = escape_like_literal(path)
+            exclude_cond = and_(
+                Path.domain == domain,
+                or_(
+                    Path.path == path,
+                    Path.path.like(f"{safe_prefix}/%", escape="\\"),
+                )
+            )
+            if namespace is not None:
+                exclude_cond = and_(exclude_cond, Path.namespace == namespace)
+
+            surviving_query = select(Path).where(
+                Path.node_uuid == target_node_uuid,
+                ~exclude_cond,
+            )
+            if namespace is not None:
+                surviving_query = surviving_query.where(Path.namespace == namespace)
+            
+            from sqlalchemy import case
+            surviving_query = surviving_query.order_by(
+                case(
+                    (Path.domain == domain, 0),
+                    else_=1
+                ),
+                Path.path
+            )
+            
+            surviving_paths_result = await session.execute(surviving_query.limit(1))
+            surviving_path = surviving_paths_result.scalar_one_or_none()
+
             for child_edge in child_edges:
                 surviving_count = await self._count_incoming_paths(
                     session,
@@ -1559,7 +1600,10 @@ class GraphService:
                     exclude_namespace=namespace,
                 )
                 if surviving_count == 0:
-                    would_orphan.append(child_edge)
+                    if surviving_path is None:
+                        would_orphan.append(child_edge)
+                    else:
+                        repair_tasks.append(child_edge)
 
             if would_orphan:
                 details = ", ".join(
@@ -1572,6 +1616,56 @@ class GraphService:
                     f"Create alternative paths for these children first, "
                     f"or remove them explicitly."
                 )
+
+            if repair_tasks and surviving_path:
+                for child_edge in repair_tasks:
+                    base_name = child_edge.name
+                    expected_path = f"{surviving_path.path}/{base_name}" if surviving_path.path else base_name
+
+                    suffix_counter = 0
+                    max_attempts = 100
+                    while True:
+                        existing_path_result = await session.execute(
+                            select(1).where(
+                                Path.namespace == surviving_path.namespace,
+                                Path.domain == surviving_path.domain,
+                                Path.path == expected_path,
+                            )
+                        )
+                        if existing_path_result.scalar_one_or_none() is None:
+                            break
+
+                        if suffix_counter >= max_attempts:
+                            raise ValueError(
+                                f"Cannot find a free path for child '{base_name}' "
+                                f"under '{surviving_path.domain}://{surviving_path.path}' "
+                                f"after {max_attempts} attempts"
+                            )
+
+                        if suffix_counter == 0:
+                            fallback_name = f"{base_name}_{child_edge.child_uuid[:8]}"
+                        else:
+                            fallback_name = f"{base_name}_{child_edge.child_uuid[:8]}_{suffix_counter}"
+
+                        expected_path = f"{surviving_path.path}/{fallback_name}" if surviving_path.path else fallback_name
+                        suffix_counter += 1
+
+                    await self._insert_path(
+                        session,
+                        surviving_path.domain,
+                        expected_path,
+                        child_edge.id,
+                        child_edge.child_uuid,
+                        surviving_path.namespace,
+                    )
+                    await self._cascade_create_paths(
+                        session,
+                        child_edge.child_uuid,
+                        surviving_path.domain,
+                        expected_path,
+                        _visited=None,
+                        namespace=surviving_path.namespace,
+                    )
 
             collector = ChangeCollector()
             affected_nodes = await self._search.get_node_uuids_for_prefix(session, domain, path, namespace=namespace)
