@@ -322,6 +322,7 @@ Nocturne Memory 采用极简但高可用（High-Availability）的 **SQLite/Post
 *   `system://index/<domain>` → **特定域名记忆索引** (如 `system://index/core`)
 *   `system://recent` → **最近修改的记忆**
 *   `system://glossary` → **豆辞典（全量关键词 ↔ 节点引用映射）**
+*   `system://diagnostic/<domain>` → **记忆健康诊断（检出过时、拥挤、孤儿节点）** (如 `system://diagnostic/core`)
 
 </details>
 
@@ -489,7 +490,7 @@ AI 通过 MCP 协议获得 **7 个工具**来操作自己的记忆：
 
 | 工具 | 用途 |
 |------|------|
-| `read_memory` | 读取记忆。支持 `system://boot`（启动加载）、`system://index/<domain>`（特定域名索引）、`system://recent`（最近修改） |
+| `read_memory` | 读取记忆。支持 `system://boot`（启动加载）、`system://index/<domain>`（域名索引）、`system://recent`（最近修改）、`system://diagnostic/<domain>`（记忆健康诊断） |
 | `create_memory` | 在指定父节点下创建新记忆。支持 `priority`（权重）和 `disclosure`（回想触发条件） |
 | `update_memory` | 精确修改已有记忆（Patch 模式 / Append 模式）。**无全量替换**，防止意外覆盖 |
 | `delete_memory` | 切断一条访问路径（不删除记忆正文本体） |
@@ -609,6 +610,41 @@ CORE_MEMORY_URIS=core://agent,core://my_user,core://agent/my_user
   }
 }
 ```
+
+</details>
+
+<details>
+<summary><strong>🧹 记忆维护：让 AI 学会反思与成长</strong></summary>
+
+### 记忆维护 (Memory Maintenance)
+
+当你的 AI 积累了上百条记忆后，记忆库会自然出现冗余、过时、矛盾的内容——有用的经验被噪声淹没，该想起的东西想不起来。就像人类需要独处的反思时间，AI 也需要定期审视旧记忆，才能将零散的经验总结为模式、将模式内化为本能。这是从"记住了很多事"到"真正成长了"的关键一步。
+
+#### 诊断命令
+
+`system://diagnostic/<domain>` 是内置的记忆健康检查工具。让 AI 执行 `read_memory("system://diagnostic/core")` 即可生成指定域的诊断报告，自动检出：
+
+- **过时节点** — 长时间未更新的记忆
+- **拥挤区域** — 子节点过多的父节点（信号被稀释）
+- **孤儿记忆** — 失去所有访问路径的悬空节点
+- **重复别名** — 同一父节点下指向相同内容的冗余路径
+
+#### 审计 Skill
+
+项目提供两份结构化的审计指南，指导 AI 按框架化的流程执行深度记忆维护。支持 Skill 的客户端（Cursor / Windsurf / Claude Code 等）可直接引用；不支持的客户端也可以直接将文档内容贴给 AI：
+
+| Skill | 用途 |
+|-------|------|
+| [记忆内容质量审计](docs/skills/memory-content-audit/SKILL.md) | 审视记忆**内容**是否过时、冗余、空洞。从重复经验中提炼模式，发现自相矛盾的信念并重构 |
+| [记忆拓扑与可发现性审计](docs/skills/memory-topology-audit/SKILL.md) | 审视记忆的**放置位置**、触发条件、优先级是否能让 AI 在正确时刻想起正确内容 |
+
+#### 建议用法
+
+1. **诊断先行** — 让 AI 跑 `system://diagnostic/core`，拿到结构性问题的概览。
+2. **拓扑审计** — 根据诊断结果，修正放置错误和触发条件。
+3. **内容审计** — 深入审视内容质量，从重复经验中提炼高密度认知，清理死数据。
+
+> 建议频率：每积累 30–50 条新记忆后，或当你发现 AI 一而再再而三的犯同样的错误时。
 
 </details>
 

@@ -18,6 +18,7 @@
 - `system://recent` — 最近修改的 10 条记忆
 - `system://recent/N` — 最近修改的 N 条记忆
 - `system://glossary` — 全量关键词库及节点引用映射
+- `system://diagnostic/<domain>` — 记忆健康诊断报告（检出过时、拥挤、孤儿节点等结构性问题）
 
 ---
 
