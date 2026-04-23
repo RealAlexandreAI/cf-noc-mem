@@ -343,6 +343,7 @@ The backend manages a full **Node–Memory–Edge–Path** graph topology. The f
 *   `system://index/<domain>` → **Domain-specific memory index** (e.g. `system://index/core`)
 *   `system://recent` → **Recently modified memories**
 *   `system://glossary` → **Glossary (full keyword ↔ node reference map)**
+*   `system://diagnostic/<domain>` → **Memory health diagnostic (detects stale, crowded, and orphaned nodes)** (e.g. `system://diagnostic/core`)
 
 </details>
 
@@ -510,7 +511,7 @@ The AI operates its own memories through **7 tools** via the MCP protocol:
 
 | Tool | Purpose |
 |------|---------|
-| `read_memory` | Read a memory. Supports `system://boot` (boot loading), `system://index/<domain>` (domain-specific index), `system://recent` (recently modified) |
+| `read_memory` | Read a memory. Supports `system://boot` (boot loading), `system://index/<domain>` (domain index), `system://recent` (recently modified), `system://diagnostic/<domain>` (memory health diagnostic) |
 | `create_memory` | Create a new memory under a specified parent node. Supports `priority` (weight) and `disclosure` (recall trigger condition) |
 | `update_memory` | Precisely modify existing memories (Patch mode / Append mode). **No full replacement** — prevents accidental overwrites |
 | `delete_memory` | Sever an access path (does not delete the memory content itself) |
@@ -626,6 +627,41 @@ If you want to run multiple AI personas in the same database (e.g., Alice and Bo
   }
 }
 ```
+
+</details>
+
+<details>
+<summary><strong>🧹 Memory Maintenance: Teaching Your AI to Reflect and Grow</strong></summary>
+
+### Memory Maintenance
+
+Once your AI accumulates hundreds of memories, the memory store will naturally develop redundancy, outdated content, and contradictions — useful experience gets drowned out by noise, and the right memories fail to surface at the right time. Just as humans need quiet time for self-reflection, AI also needs to periodically review old memories to consolidate scattered experiences into patterns and internalize patterns into instinct. This is the critical step from "remembering a lot" to "actually growing."
+
+#### Diagnostic Command
+
+`system://diagnostic/<domain>` is a built-in memory health check. Have your AI run `read_memory("system://diagnostic/core")` to generate a diagnostic report for a given domain, automatically detecting:
+
+- **Stale nodes** — memories that haven't been updated for a long time
+- **Crowded areas** — parent nodes with too many children (signal dilution)
+- **Orphaned memories** — dangling nodes that have lost all access paths
+- **Duplicate aliases** — redundant paths to the same content under the same parent
+
+#### Audit Skills
+
+The project includes two structured audit guides that walk the AI through a framework-driven deep maintenance process. Clients that support Skills (Cursor / Windsurf / Claude Code, etc.) can reference them directly; for other clients, you can simply paste the document content to your AI:
+
+| Skill | Purpose |
+|-------|---------|
+| [Memory Content Quality Audit](docs/skills/memory-content-audit/SKILL.md) | Review memory **content** for staleness, redundancy, and emptiness. Extract patterns from repeated experiences, detect self-contradictory beliefs and rebuild them |
+| [Memory Topology & Discoverability Audit](docs/skills/memory-topology-audit/SKILL.md) | Review memory **placement**, trigger conditions, and priorities to ensure the AI recalls the right memory at the right moment |
+
+#### Recommended Workflow
+
+1. **Diagnose first** — have the AI run `system://diagnostic/core` for a structural overview.
+2. **Topology audit** — based on the diagnostic results, fix misplacements and trigger conditions.
+3. **Content audit** — deep-dive into content quality, distill high-density insights from repeated experiences, purge dead data.
+
+> Suggested frequency: every 30–50 new memories, or whenever you notice your AI repeat its mistakes.
 
 </details>
 
