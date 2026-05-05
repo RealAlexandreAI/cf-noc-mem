@@ -595,7 +595,11 @@ async def create_memory(
             f"Would reading them trigger a need to recall this new memory? If yes, link them!\\n"
             f"- If the related memories are few and this memory's scope is narrow, use `add_alias`.\\n"
             f"- If the related memories are many and this memory's scope is broad, consider using `manage_triggers`.\\n"
-            f"- (Never invent arbitrary placeholder words just to force a trigger.)"
+            f"- (Never invent arbitrary placeholder words just to force a trigger.)\\n\\n"
+            f"[HOLD ON]: Do you know what '{parent_uri}' says? "
+            f"If you haven't read it this session, read_memory() it first. "
+            f"Then: does this new memory conflict with ANY memory in your current context? "
+            f"If yes, use memory-audit-belief-duel skill to resolve it before continuing."
         )
 
     except ValueError as e:
@@ -959,6 +963,14 @@ async def add_alias(
                     f"If you are renaming/moving, delete the old path now.\n"
                     f"If not, you probably created a redundant alias — consider removing one."
                 )
+
+        new_parent_uri = make_uri(new_domain, "/".join(new_path.split("/")[:-1]))
+        msg += (
+            f"\n\n[HOLD ON]: Do you know what '{new_parent_uri}' says? "
+            f"If you haven't read it this session, read_memory() it first. "
+            f"Then: does the aliased content conflict with ANY memory in your current context? "
+            f"If yes, use memory-audit-belief-duel skill to resolve it before continuing."
+        )
 
         return msg
 

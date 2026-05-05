@@ -61,6 +61,16 @@ async def fetch_and_format_memory(uri: str, track_access: bool = False) -> str:
     lines.append(f"Memory ID: {memory.get('id')}")
     lines.append(f"Other Aliases: {memory.get('alias_count', 0)}")
     lines.append(f"Priority: {memory.get('priority', 0)}")
+    
+    created_at = memory.get("created_at")
+    if created_at:
+        try:
+            dt = datetime.fromisoformat(created_at)
+            lines.append(f"Last Modified: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
+        except Exception:
+            lines.append(f"Last Modified: {created_at}")
+    else:
+        lines.append("Last Modified: (unknown)")
 
     disclosure = memory.get("disclosure")
     if disclosure:
