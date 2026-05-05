@@ -534,7 +534,33 @@ If your AI client doesn't support stdio mode (e.g., web-based Agents), you can u
 ```bash
 python backend/run_sse.py
 ```
-SSE Endpoint: `http://localhost:8233/sse`
+This starts a single process serving MCP transports, REST API, and Dashboard:
+- SSE Endpoint: `http://localhost:8233/sse`
+- Streamable HTTP Endpoint: `http://localhost:8233/mcp`
+- Dashboard: `http://localhost:8233/`
+
+**Remote access (LAN / public network):** To accept connections from other machines, set `HOST` and `API_TOKEN`:
+```bash
+# 1. Set an auth token in .env (≥32 characters)
+#    Generate one: python -c "import secrets; print(secrets.token_urlsafe(32))"
+API_TOKEN=<your-token>
+
+# 2. Bind to all network interfaces
+HOST=0.0.0.0 python backend/run_sse.py
+```
+The server refuses to bind to a non-localhost address without `API_TOKEN`. Clients must include the auth header:
+```json
+{
+  "mcpServers": {
+    "nocturne_memory": {
+      "url": "http://<your-server-ip>:8233/sse",
+      "headers": {
+        "Authorization": "Bearer <your-token>"
+      }
+    }
+  }
+}
+```
 
 </details>
 
@@ -694,8 +720,10 @@ In addition to the local Python installation, you can deploy the full Nocturne M
 
 3. **Edit the `.env` configuration file**
    - **For Docker deployment**: you MUST uncomment all variables under `Docker Compose Configuration` (`POSTGRES_*` and `NGINX_PORT`).
-   - **To enable password protection** (recommended for public deployment): uncomment and change the `API_TOKEN` variable.
-   - **For local single-user mode in Docker**: leave `API_TOKEN` commented out. The system will run without authentication.
+   - **Set `API_TOKEN`**: Docker Compose binds the backend to a container-network address, so the services refuse to start without a token. Uncomment `API_TOKEN` and replace it with a strong random value:
+     ```bash
+     python -c "import secrets; print(secrets.token_urlsafe(32))"
+     ```
    ```bash
    nano .env  # or your preferred editor
    ```
@@ -713,7 +741,7 @@ In addition to the local Python installation, you can deploy the full Nocturne M
 
 ### MCP Client Configuration (Remote SSE / Streamable HTTP)
 
-After Docker deployment, AI clients can connect to Nocturne Memory via the exposed endpoint. The specific endpoint path depends on the transport protocol supported by your client. If you enabled `API_TOKEN` in your `.env`, all API requests will require Bearer Token authentication.
+After Docker deployment, AI clients can connect to Nocturne Memory via the exposed endpoint. The specific endpoint path depends on the transport protocol supported by your client. Docker Compose deployment requires `API_TOKEN` in `.env`, and all API requests require Bearer Token authentication.
 
 **1. Newer Clients (e.g., GitHub Copilot, config `type: "http"` supporting Streamable HTTP)**
 ```json
@@ -746,7 +774,7 @@ After Docker deployment, AI clients can connect to Nocturne Memory via the expos
 
 Replace `<your-server-ip>` with your server's IP or domain name, `<NGINX_PORT>` with the port configured in `.env` (default `80`), and `<your-api-token>` with the `API_TOKEN` value from `.env`.
 
-> ⚠️ If `API_TOKEN` is enabled, the `/health` endpoint requires no authentication (used for Docker container health checks). All other `/api/`, `/sse`, and `/mcp` endpoints require the `Authorization: Bearer <token>` header.
+> ⚠️ In Docker deployments, the `/health` endpoint requires no authentication (used for Docker container health checks). All other `/api/`, `/sse`, and `/mcp` endpoints require the `Authorization: Bearer <token>` header.
 
 ### Common Operations
 

@@ -87,7 +87,7 @@ def build_web_app(*, extra_routes=None, extra_prefixes=None, lifespan=None):
     from starlette.responses import FileResponse
     from starlette.routing import Mount, Route
     from starlette.types import ASGIApp, Receive, Scope, Send
-    from auth import BearerTokenAuthMiddleware
+    from auth import BearerTokenAuthMiddleware, get_cors_config
     from namespace_middleware import NamespaceMiddleware
     from api import review_router, browse_router, maintenance_router
     from health import router as health_router, health_check
@@ -96,13 +96,6 @@ def build_web_app(*, extra_routes=None, extra_prefixes=None, lifespan=None):
         title="Nocturne Memory API",
         docs_url="/docs",
         openapi_url="/openapi.json",
-    )
-    api.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
     )
     api.include_router(health_router)
     api.include_router(review_router)
@@ -120,6 +113,13 @@ def build_web_app(*, extra_routes=None, extra_prefixes=None, lifespan=None):
     inner = Starlette(routes=routes, lifespan=lifespan)
     authed = NamespaceMiddleware(
         BearerTokenAuthMiddleware(inner, excluded_paths=["/api/health", "/health"])
+    )
+    cors_authed = CORSMiddleware(
+        authed,
+        **get_cors_config(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     backend_prefixes = tuple(["/api", "/health"] + list(extra_prefixes or []))
@@ -163,7 +163,7 @@ def build_web_app(*, extra_routes=None, extra_prefixes=None, lifespan=None):
                 from starlette.responses import PlainTextResponse
                 await PlainTextResponse("Admin UI missing index.html.", status_code=404)(scope, receive, send)
 
-    return _Fallback(authed, FRONTEND_DIR)
+    return _Fallback(cors_authed, FRONTEND_DIR)
 
 
 async def _ensure_frontend_built():
@@ -239,10 +239,13 @@ async def lifespan(server: FastMCP):
         # run_sse.py sets _NOCTURNE_SSE_MODE to prevent a duplicate.
         if not os.environ.get("_NOCTURNE_SSE_MODE"):
             import uvicorn
+            from auth import enforce_network_auth
 
             port = int(os.environ.get("WEB_PORT", "8233"))
+            web_host = os.environ.get("WEB_HOST", "127.0.0.1")
+            enforce_network_auth(host=web_host)
             config = uvicorn.Config(
-                build_web_app(), host="0.0.0.0", port=port, log_level="warning",
+                build_web_app(), host=web_host, port=port, log_level="warning",
             )
             web_server = uvicorn.Server(config)
             

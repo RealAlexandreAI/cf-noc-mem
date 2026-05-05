@@ -519,6 +519,29 @@ python backend/run_sse.py
 - Streamable HTTP Endpoint: `http://localhost:8233/mcp`
 - Dashboard: `http://localhost:8233/`
 
+**远程访问（局域网 / 公网）：** 如果需要从其他机器连接，需要设置 `HOST` 和 `API_TOKEN`：
+```bash
+# 1. 在 .env 中设置认证令牌（≥32 字符）
+#    生成方法：python -c "import secrets; print(secrets.token_urlsafe(32))"
+API_TOKEN=<your-token>
+
+# 2. 绑定到所有网络接口
+HOST=0.0.0.0 python backend/run_sse.py
+```
+未设置 `API_TOKEN` 时，服务器会拒绝绑定到非 localhost 地址。客户端配置需携带认证头：
+```json
+{
+  "mcpServers": {
+    "nocturne_memory": {
+      "url": "http://<your-server-ip>:8233/sse",
+      "headers": {
+        "Authorization": "Bearer <your-token>"
+      }
+    }
+  }
+}
+```
+
 </details>
 
 <details>
@@ -677,8 +700,10 @@ CORE_MEMORY_URIS=core://agent,core://my_user,core://agent/my_user
 
 3. **编辑 `.env` 配置文件**
    - **对于 Docker 部署**：你必须取消注释 `Docker Compose Configuration` 下的所有变量（`POSTGRES_*` 和 `NGINX_PORT`）。
-   - **如果你想启用密码保护**（推荐公网部署时使用）：取消注释并修改 `API_TOKEN` 变量。
-   - **如果只在本地单机使用 Docker**：保持 `API_TOKEN` 注释即可，系统会以无密码模式运行。
+   - **必须设置 `API_TOKEN`**：Docker Compose 会把后端绑定到容器网络地址，未设置时会拒绝启动。请取消注释并替换为强随机值：
+     ```bash
+     python -c "import secrets; print(secrets.token_urlsafe(32))"
+     ```
    ```bash
    nano .env  # 或使用你喜欢的编辑器
    ```
@@ -696,7 +721,7 @@ CORE_MEMORY_URIS=core://agent,core://my_user,core://agent/my_user
 
 ### MCP 客户端配置（远程 SSE / Streamable HTTP）
 
-Docker 部署后，AI 客户端可以通过暴露的端点连接到 Nocturne Memory。具体的端点路径取决于你的客户端支持的传输协议。如果你在 `.env` 中启用了 `API_TOKEN`，所有 API 请求都需要携带 Bearer Token 进行鉴权。
+Docker 部署后，AI 客户端可以通过暴露的端点连接到 Nocturne Memory。具体的端点路径取决于你的客户端支持的传输协议。Docker Compose 部署要求 `.env` 中设置 `API_TOKEN`，所有 API 请求都需要携带 Bearer Token 进行鉴权。
 
 **1. 较新的客户端（如 GitHub Copilot，配置 `type: "http"` 支持 Streamable HTTP）**
 ```json
@@ -729,7 +754,7 @@ Docker 部署后，AI 客户端可以通过暴露的端点连接到 Nocturne Mem
 
 将 `<your-server-ip>` 替换为你的服务器 IP 或域名，`<NGINX_PORT>` 替换为 `.env` 中配置的端口（默认 `80`），`<your-api-token>` 替换为 `.env` 中的 `API_TOKEN` 值。
 
-> ⚠️ 若启用了 `API_TOKEN`，除 `/health` 健康检查端点外（用于 Docker 容器健康检查），其他所有 `/api/`、`/sse` 和 `/mcp` 端点均需要 `Authorization: Bearer <token>` 请求头。
+> ⚠️ Docker 部署中，除 `/health` 健康检查端点外（用于 Docker 容器健康检查），其他所有 `/api/`、`/sse` 和 `/mcp` 端点均需要 `Authorization: Bearer <token>` 请求头。
 
 ### 常用操作
 

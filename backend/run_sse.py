@@ -13,6 +13,7 @@ import uvicorn
 # Ensure we can import from backend dir
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from auth import enforce_network_auth
 from mcp_server import mcp, build_web_app, FRONTEND_DIR
 
 
@@ -23,6 +24,11 @@ def main():
     After running `npm run build` in frontend/, the admin UI is accessible
     at the same port — no separate dev server needed.
     """
+    port = int(os.getenv("PORT", 8233))
+    host = os.getenv("HOST", "127.0.0.1")
+
+    enforce_network_auth(host=host)
+
     print("Initializing Nocturne Memory Server...")
 
     # --- MCP transports ---
@@ -43,9 +49,6 @@ def main():
         extra_prefixes=["/sse", "/messages", "/mcp"],
         lifespan=combined_lifespan,
     )
-
-    port = int(os.getenv("PORT", 8233))
-    host = os.getenv("HOST", "0.0.0.0")
 
     print(f"Server starting on http://{host}:{port}")
     print(f"  MCP (SSE):   http://{host}:{port}/sse")
