@@ -296,7 +296,7 @@ async def test_maintenance_lists_deprecated_and_orphaned_memories(api_client, gr
 
 
 async def test_api_requires_bearer_token_when_configured(reload_module, monkeypatch):
-    monkeypatch.setenv("API_TOKEN", "secret-token")
+    monkeypatch.setenv("API_TOKEN", "secret-token-that-is-at-least-32-chars-long")
 
     from db import get_db_manager
 
@@ -308,7 +308,7 @@ async def test_api_requires_bearer_token_when_configured(reload_module, monkeypa
         unauthorized = await client.get("/browse/domains")
         authorized = await client.get(
             "/browse/domains",
-            headers={"Authorization": "Bearer secret-token"},
+            headers={"Authorization": "Bearer secret-token-that-is-at-least-32-chars-long"},
         )
 
     assert unauthorized.status_code == 401
