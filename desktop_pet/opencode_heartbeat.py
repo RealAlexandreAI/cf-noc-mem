@@ -298,6 +298,19 @@ def extract_response_text(response: dict) -> str:
     return "\n".join(texts) if texts else "(无文本内容)"
 
 
+def get_all_messages(session_id: str) -> Optional[list[dict]]:
+    """通过 REST API 获取会话的所有消息"""
+    url = f"{OPENCODE_BASE_URL}/session/{session_id}/message"
+    try:
+        auth = (OPENCODE_USERNAME, OPENCODE_PASSWORD) if OPENCODE_USERNAME else None
+        response = requests.get(url, timeout=10, auth=auth)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        log(f"[WARN] 获取消息列表失败: {e}")
+        return None
+
+
 def do_heartbeat(heartbeat_count: int):
     """执行单次心跳（在单独线程中运行）"""
     global is_heartbeat_in_progress, last_heartbeat_start_time
@@ -307,6 +320,9 @@ def do_heartbeat(heartbeat_count: int):
         last_heartbeat_start_time = datetime.datetime.now()
 
     try:
+        # 获取心跳前的消息总数，以便后续提取心跳过程中的所有中间消息
+        messages_before = get_all_messages(SESSION_ID)
+
         screenshot_path = capture_screenshot()
         if screenshot_path:
             kb = os.path.getsize(screenshot_path) // 1024
@@ -323,16 +339,37 @@ def do_heartbeat(heartbeat_count: int):
         if response:
             log(f"心跳 #{heartbeat_count} 成功 (耗时 {elapsed:.1f}秒)")
 
-            reply = extract_response_text(response)
+            # 获取心跳后的消息列表，提取新增的 assistant 消息
+            messages_after = get_all_messages(SESSION_ID)
+            
+            full_reply = ""
+            
+            # 只有当两次历史记录获取都成功时，才提取增量消息
+            if messages_before is not None and messages_after is not None:
+                count_before = len(messages_before)
+                new_messages = messages_after[count_before:]
+                
+                all_assistant_texts = []
+                for msg in new_messages:
+                    if msg.get("info", {}).get("role") == "assistant":
+                        all_assistant_texts.append(extract_response_text(msg))
+                        
+                full_reply = "\n".join(all_assistant_texts)
 
-            # 检查是否要说话
-            speak_text = extract_speak_text(reply)
+            # 如果未能成功通过历史记录获取新增消息（或者由于其他原因解析为空），回退使用本次心跳直接返回的最后一条响应文本
+            if not full_reply:
+                full_reply = extract_response_text(response)
+
+            # 在所有新增的 assistant 文本中检查是否要说话
+            speak_text = extract_speak_text(full_reply)
             if speak_text:
                 trigger_speak(speak_text)
 
+            # 日志仅打印最后一次响应的摘要
+            reply = extract_response_text(response)
             if len(reply) > 200:
                 reply = reply[:200] + "..."
-            log(f"回复: {reply}")
+            log(f"回复摘要: {reply}")
 
             info = response.get("info", {})
             tokens = info.get("tokens", {})
