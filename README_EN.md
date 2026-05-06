@@ -674,20 +674,11 @@ Once your AI accumulates hundreds of memories, the memory store will naturally d
 
 #### Audit Skills
 
-The project includes two structured audit guides that walk the AI through a framework-driven deep maintenance process. Clients that support Skills (Cursor / Windsurf / Claude Code, etc.) can reference them directly; for other clients, you can simply paste the document content to your AI:
+The project includes [a structured audit guide](docs/skills/memory-audit/SKILL.md) (1 entry point + 5 sub-skills) that helps the AI autonomously diagnose and fix redundancy, contradictions, trigger failures, and other memory issues.
 
-| Skill | Purpose |
-|-------|---------|
-| [Memory Content Quality Audit](docs/skills/memory-content-audit/SKILL.md) | Review memory **content** for staleness, redundancy, and emptiness. Extract patterns from repeated experiences, detect self-contradictory beliefs and rebuild them |
-| [Memory Topology & Discoverability Audit](docs/skills/memory-topology-audit/SKILL.md) | Review memory **placement**, trigger conditions, and priorities to ensure the AI recalls the right memory at the right moment |
+**Usage**: tell the AI to invoke `docs/skills/memory-audit/SKILL.md` directly. It will run the diagnosis and call the relevant sub-skills as needed. Suggested frequency: every 30-50 new memories, or whenever the AI keeps repeating the same mistake.
 
-#### Recommended Workflow
-
-1. **Diagnose first** — have the AI run `system://diagnostic/core` for a structural overview.
-2. **Topology audit** — based on the diagnostic results, fix misplacements and trigger conditions.
-3. **Content audit** — deep-dive into content quality, distill high-density insights from repeated experiences, purge dead data.
-
-> Suggested frequency: every 30–50 new memories, or whenever you notice your AI repeat its mistakes.
+> Clients that support Skills (Cursor / Windsurf / Claude Code, etc.) can reference the files under [`docs/skills/`](docs/skills/) directly as Skills; for other clients, you can paste the [entry file](docs/skills/memory-audit/SKILL.md) into the conversation and tell the AI the path to the `skills` folder (`docs/skills/`).
 
 </details>
 

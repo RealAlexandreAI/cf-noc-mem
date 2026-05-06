@@ -654,20 +654,11 @@ CORE_MEMORY_URIS=core://agent,core://my_user,core://agent/my_user
 
 #### 审计 Skill
 
-项目提供两份结构化的审计指南，指导 AI 按框架化的流程执行深度记忆维护。支持 Skill 的客户端（Cursor / Windsurf / Claude Code 等）可直接引用；不支持的客户端也可以直接将文档内容贴给 AI：
+项目提供 [一套结构化的审计指南](docs/skills/memory-audit/SKILL.md)（1 个入口 + 5 个子技能），指导 AI 自主诊断并修复记忆中的冗余、矛盾、触发失效等问题。
 
-| Skill | 用途 |
-|-------|------|
-| [记忆内容质量审计](docs/skills/memory-content-audit/SKILL.md) | 审视记忆**内容**是否过时、冗余、空洞。从重复经验中提炼模式，发现自相矛盾的信念并重构 |
-| [记忆拓扑与可发现性审计](docs/skills/memory-topology-audit/SKILL.md) | 审视记忆的**放置位置**、触发条件、优先级是否能让 AI 在正确时刻想起正确内容 |
+**用法**：直接告诉 AI 调用docs/skills/memory-audit/SKILL.md 即可，AI 会自行运行诊断并按需调用子技能。建议频率：每积累 30–50 条新记忆后，或当 AI 反复犯同样的错误时。
 
-#### 建议用法
-
-1. **诊断先行** — 让 AI 跑 `system://diagnostic/core`，拿到结构性问题的概览。
-2. **拓扑审计** — 根据诊断结果，修正放置错误和触发条件。
-3. **内容审计** — 深入审视内容质量，从重复经验中提炼高密度认知，清理死数据。
-
-> 建议频率：每积累 30–50 条新记忆后，或当你发现 AI 一而再再而三的犯同样的错误时。
+> 支持 Skill 的客户端（Cursor / Windsurf / Claude Code 等）可将 [`docs/skills/`](docs/skills/) 目录下的文件直接引用为 Skill；不支持的客户端也可以将 [入口文件](docs/skills/memory-audit/SKILL.md) 贴进对话，并告知 AI `skills` 文件夹的路径（docs/skills/）。
 
 </details>
 
