@@ -619,6 +619,85 @@ class GraphService:
                 "duplicate_aliases": sorted(duplicate_aliases, key=lambda x: x["count"], reverse=True)
             }
 
+    async def get_random_memory(self, namespace: str = "", domain: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Pick a weighted-random memory node. Weight = staleness * priority_multiplier.
+        Older and higher-priority memories are more likely to surface.
+        Returns dict with node_uuid, uri, priority, last_accessed_at, or None if empty.
+        """
+        import random
+        from datetime import datetime
+
+        async with self.session() as session:
+            # 1. 数据库层面直接过滤和聚合，只拉取计算权重所需的标量字段，大幅降低内存和传输开销
+            stmt = (
+                select(
+                    Node.uuid,
+                    Node.last_accessed_at,
+                    Node.created_at,
+                    func.min(func.coalesce(Edge.priority, 2)).label("best_priority")
+                )
+                .select_from(Path)
+                .join(Edge, Path.edge_id == Edge.id)
+                .join(Node, Node.uuid == Edge.child_uuid)
+                .where(Path.namespace == namespace)
+                .where(Node.uuid != ROOT_NODE_UUID)
+                .group_by(Node.uuid, Node.last_accessed_at, Node.created_at)
+            )
+            
+            if domain:
+                stmt = stmt.where(Path.domain == domain)
+            else:
+                stmt = stmt.where(Path.domain != "system")
+            
+            result = await session.execute(stmt)
+            rows = result.all()
+
+            if not rows:
+                return None
+
+            # 2. 在 Python 中计算权重并进行加权随机选择
+            now = datetime.now()
+            weights = []
+            for row in rows:
+                last = row.last_accessed_at or row.created_at or now
+                staleness_days = max((now - last).total_seconds() / 86400.0, 0.5)
+                # 优先级 0 -> 1x, 1 -> 0.5x, 2 -> 0.25x, 等等
+                priority = row.best_priority if row.best_priority is not None else 2
+                mult = max(0.5 ** max(0, priority), 1e-12)
+                weights.append(staleness_days * mult)
+
+            chosen = random.choices(rows, weights=weights, k=1)[0]
+
+            # 3. 针对选中的 node，查出它在当前 namespace 下的一个随机 URI
+            uri_stmt = (
+                select(Path.domain, Path.path)
+                .join(Edge, Path.edge_id == Edge.id)
+                .where(Edge.child_uuid == chosen.uuid)
+                .where(Path.namespace == namespace)
+            )
+            
+            if domain:
+                uri_stmt = uri_stmt.where(Path.domain == domain)
+            else:
+                uri_stmt = uri_stmt.where(Path.domain != "system")
+                
+            uri_result = await session.execute(uri_stmt)
+            uri_rows = uri_result.all()
+            
+            if not uri_rows:
+                return None
+                
+            chosen_domain, chosen_path = random.choice(uri_rows)
+            chosen_uri = f"{chosen_domain}://{chosen_path}"
+
+            return {
+                "node_uuid": chosen.uuid,
+                "uri": chosen_uri,
+                "priority": chosen.best_priority,
+                "last_accessed_at": chosen.last_accessed_at.isoformat() if chosen.last_accessed_at else None,
+            }
+
     # =========================================================================
     # Layer 0: Row-Level Primitives
     # Single-row / single-table. Takes session, never opens own transaction.

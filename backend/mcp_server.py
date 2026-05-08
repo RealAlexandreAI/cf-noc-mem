@@ -500,6 +500,26 @@ async def read_memory(uri: str) -> str:
                 return f"Error: Invalid number in URI '{uri}'. Usage: system://recent or system://recent/N (e.g. system://recent/20)"
         return await generate_recent_memories_view(limit=limit)
 
+    # system://random/<domain> — weighted random memory selection
+    if stripped.startswith("system://random/"):
+        domain_filter = stripped[len("system://random/") :].strip("/")
+        if not domain_filter:
+            return "Error: random command requires a domain (e.g. system://random/core)"
+        if domain_filter not in VALID_DOMAINS:
+            return f"Error: Unknown domain '{domain_filter}'. Valid domains: {', '.join(VALID_DOMAINS)}"
+            
+        graph = get_graph_service()
+        pick = await graph.get_random_memory(namespace=get_namespace(), domain=domain_filter)
+        if not pick:
+            return f"No memories available for random selection in domain '{domain_filter}'."
+        content = await fetch_and_format_memory(pick["uri"], track_access=True)
+        meta_lines = [
+            f"[Random Pick | Priority: {pick['priority']} | Last Accessed: {pick['last_accessed_at'] or 'never'}]",
+        ]
+        return "\n".join(meta_lines) + "\n\n" + content
+    elif stripped == "system://random":
+        return "Error: random command now requires a domain (e.g. system://random/core)"
+
     try:
         content = await fetch_and_format_memory(uri, track_access=True)
         return content
