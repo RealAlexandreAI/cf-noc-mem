@@ -1143,6 +1143,10 @@ class GraphService:
             collector.record("glossary_keywords", serialize_row(kw))
 
         await session.execute(
+            delete(GlossaryKeyword).where(GlossaryKeyword.node_uuid == node_uuid)
+        )
+
+        await session.execute(
             delete(Memory).where(Memory.node_uuid == node_uuid)
         )
         node_row = await session.execute(select(Node).where(Node.uuid == node_uuid))
@@ -1248,6 +1252,16 @@ class GraphService:
             )
             for mem in active_mems.scalars().all():
                 collector.record("memories", serialize_row(mem))
+
+            kw_result = await session.execute(
+                select(GlossaryKeyword).where(GlossaryKeyword.node_uuid == node_uuid)
+            )
+            for kw in kw_result.scalars().all():
+                collector.record("glossary_keywords", serialize_row(kw))
+
+        await session.execute(
+            delete(GlossaryKeyword).where(GlossaryKeyword.node_uuid == node_uuid)
+        )
 
         await self._deprecate_node_memories(session, node_uuid)
 
