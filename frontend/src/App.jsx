@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { ShieldCheck, Database, LayoutGrid, Sparkles, AlertCircle, Layers } from 'lucide-react';
+import { ShieldCheck, Database, LayoutGrid, Sparkles, AlertCircle, Layers, Settings } from 'lucide-react';
 import clsx from 'clsx';
 
 import ReviewPage from './features/review/ReviewPage';
 import MemoryBrowser from './features/memory/MemoryBrowser';
 import MaintenancePage from './features/maintenance/MaintenancePage';
+import SettingsDrawer from './features/settings/SettingsDrawer';
 import TokenAuth from './components/TokenAuth';
 import { AUTH_ERROR_EVENT, getNamespaces } from './lib/api';
 
@@ -65,7 +66,7 @@ function NamespaceSelector() {
   const activeLabel = selected || '(default)';
 
   return (
-    <div className="flex items-center gap-2 ml-auto text-sm">
+    <div className="flex items-center gap-2 text-sm">
       <Layers size={14} className="text-slate-400 flex-shrink-0" />
       {showInput ? (
         <input
@@ -147,7 +148,16 @@ function Layout() {
           </NavLink>
         </nav>
 
-        {!isReviewPage && <NamespaceSelector />}
+        <div className="ml-auto flex items-center gap-4">
+          {!isReviewPage && <NamespaceSelector />}
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-settings'))}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+          >
+            <Settings size={16} />
+            Settings
+          </button>
+        </div>
       </div>
 
       {/* Main Area */}
@@ -162,6 +172,8 @@ function Layout() {
           <Route path="/maintenance" element={<MaintenancePage />} />
         </Routes>
       </div>
+
+      <SettingsDrawer />
     </div>
   );
 }
@@ -241,8 +253,15 @@ function App() {
         <div className="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-4">
           <AlertCircle className="w-6 h-6 text-red-500" />
         </div>
-        <div className="text-lg font-bold text-slate-100 mb-1">后端未连接</div>
-        <div className="text-sm text-slate-500">请检查后端服务是否已启动</div>
+        <div className="text-lg font-bold text-slate-100 mb-1">无法连接到后端服务 (Connection Refused)</div>
+        <div className="text-sm text-slate-500 max-w-md text-center mt-2 space-y-2">
+          <p>请检查以下几项配置：</p>
+          <ul className="list-disc text-left pl-6 space-y-1">
+            <li>后端进程是否正在运行？</li>
+            <li><strong>端口配置是否一致？</strong>请检查 <code className="bg-slate-800 px-1 rounded text-slate-300">config.json</code> 中的 <code className="bg-slate-800 px-1 rounded text-slate-300">web_port</code> 是否与前端请求的端口一致。</li>
+            <li>如果你在使用 Docker，请检查 <code className="bg-slate-800 px-1 rounded text-slate-300">docker-compose.yml</code> 中的端口映射。</li>
+          </ul>
+        </div>
         <button 
           onClick={() => window.location.reload()}
           className="mt-6 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm transition-colors"

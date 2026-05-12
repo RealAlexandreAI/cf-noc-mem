@@ -6,10 +6,7 @@ Services are lazily constructed on first access and share a
 single DatabaseManager instance.
 """
 
-import os
 from typing import Optional, TYPE_CHECKING
-
-from dotenv import load_dotenv, find_dotenv
 
 from .database import DatabaseManager
 from .snapshot import ChangesetStore, get_changeset_store
@@ -24,14 +21,27 @@ if TYPE_CHECKING:
     from .search import SearchIndexer
     from .glossary import GlossaryService
 
-_dotenv_path = find_dotenv(usecwd=True)
-if _dotenv_path:
-    load_dotenv(_dotenv_path)
-
 _db_manager: Optional[DatabaseManager] = None
 _graph_service: Optional["GraphService"] = None
 _search_indexer: Optional["SearchIndexer"] = None
 _glossary_service: Optional["GlossaryService"] = None
+
+
+def _resolve_database_url() -> str:
+    """Resolve DATABASE_URL from config.json."""
+    import sys
+    from pathlib import Path
+    
+    # Ensure backend directory is in sys.path so we can import config
+    backend_dir = str(Path(__file__).resolve().parent.parent)
+    if backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
+        
+    import config
+    url = config.get("database_url")
+    if not url:
+        raise ValueError("database_url is not configured in config.json")
+    return url
 
 
 def _ensure_initialized():
@@ -39,12 +49,7 @@ def _ensure_initialized():
     if _db_manager is not None:
         return
 
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise ValueError(
-            "DATABASE_URL environment variable is not set. "
-            "Please check your .env file."
-        )
+    database_url = _resolve_database_url()
 
     from .search import SearchIndexer
     from .glossary import GlossaryService

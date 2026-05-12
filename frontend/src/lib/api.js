@@ -59,12 +59,44 @@ export const getDomains = () =>
 export const getNamespaces = () =>
   api.get('/browse/namespaces').then(res => res.data);
 
-// ============ Boot URI API ============
+// ============ Settings API ============
 
-export const getBootUris = () =>
-  api.get('/browse/boot-uris').then(res => res.data.uris);
+export const getSettings = () =>
+  api.get('/settings').then(res => res.data);
 
-export const toggleBootUri = (uri, enabled) =>
-  api.put('/browse/boot-uris', { uri, enabled }).then(res => res.data);
+export const updateSettings = (data) =>
+  api.put('/settings', data).then(res => res.data);
+
+export const getSettingsBootUris = () =>
+  api.get('/settings/boot-uris').then(res => res.data);
+
+export const setSettingsBootUris = (uris) =>
+  api.put('/settings/boot-uris', { uris }).then(res => res.data);
+
+export const toggleSettingsBootUri = (uri, enabled) =>
+  api.patch('/settings/boot-uris', { uri, enabled }).then(res => res.data);
+
+export const getAllBootUris = () =>
+  api.get('/settings/boot-uris/all').then(res => res.data.boot_uris);
+
+const _nsSlug = (ns) => encodeURIComponent(ns || '_ns_default_0x7f3a9e');
+
+export const setBootUrisForNs = (namespace, uris) =>
+  api.put(`/settings/boot-uris/ns/${_nsSlug(namespace)}`, { uris }).then(res => res.data);
+
+export const deleteBootUrisForNs = (namespace) =>
+  api.delete(`/settings/boot-uris/ns/${_nsSlug(namespace)}`).then(res => res.data);
+
+export const getDatabaseStatus = () =>
+  api.get('/settings/database/status').then(res => res.data);
+
+export const testDatabase = (database_url) =>
+  api.post('/settings/database/test', { database_url }).then(res => res.data);
+
+export const createDatabase = (path) =>
+  api.post('/settings/database/create', { path }).then(res => res.data);
+
+export const openDbFolder = () =>
+  api.post('/settings/database/open-folder').then(res => res.data);
 
 export default api;

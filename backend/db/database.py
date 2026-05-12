@@ -138,7 +138,7 @@ class DatabaseManager:
                 f"  URL: {db_url}\n"
                 f"  Error: {e}\n\n"
                 f"Troubleshooting:\n"
-                f"  - Check that DATABASE_URL in your .env file is correct\n"
+                f"  - Check that database_url in config.json is correct\n"
                 f"  - For PostgreSQL, ensure the host is reachable and the password has no unescaped special characters (& * # etc.)\n"
                 f"  - For SQLite, ensure the file path is absolute and the directory exists"
             ) from e

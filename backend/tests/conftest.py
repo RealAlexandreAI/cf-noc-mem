@@ -63,6 +63,21 @@ async def isolated_test_environment(tmp_path, monkeypatch):
     monkeypatch.setenv("CORE_MEMORY_URIS", ",".join(CORE_MEMORY_URIS))
     monkeypatch.setenv("API_TOKEN", "")
 
+    import json
+    import config
+    test_config_path = tmp_path / "config.json"
+    test_config_path.write_text(json.dumps({
+        "database_url": db_url,
+        "valid_domains": VALID_DOMAINS[:-1],
+        "boot_uris": {"": CORE_MEMORY_URIS},
+        "host": "127.0.0.1",
+        "web_port": 8233,
+        "auto_open_browser": False,
+        "api_token": None,
+    }))
+    monkeypatch.setattr(config, "CONFIG_PATH", test_config_path)
+    config._invalidate()
+
     import db.snapshot as snapshot_module
 
     snapshot_module._store = None

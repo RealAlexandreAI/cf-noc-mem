@@ -13,7 +13,7 @@ import {
   Zap
 } from 'lucide-react';
 import clsx from 'clsx';
-import { api, getBootUris, toggleBootUri } from '../../lib/api';
+import { api, getSettingsBootUris, toggleSettingsBootUri } from '../../lib/api';
 import PriorityBadge from './components/PriorityBadge';
 import GlossaryHighlighter from './components/GlossaryHighlighter';
 import KeywordManager from './components/KeywordManager';
@@ -45,7 +45,7 @@ export default function MemoryBrowser() {
 
   useEffect(() => {
     api.get('/browse/domains').then(res => setDomains(res.data)).catch(() => {});
-    getBootUris().then(setBootUris).catch(() => {});
+    getSettingsBootUris().then(res => setBootUris(res.uris)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -127,7 +127,7 @@ export default function MemoryBrowser() {
   const handleBootToggle = async (uri) => {
     const isCurrentlyInBoot = bootUris.includes(uri);
     try {
-      const result = await toggleBootUri(uri, !isCurrentlyInBoot);
+      const result = await toggleSettingsBootUri(uri, !isCurrentlyInBoot);
       setBootUris(result.uris);
     } catch (err) {
       console.error('Failed to toggle boot URI:', err);

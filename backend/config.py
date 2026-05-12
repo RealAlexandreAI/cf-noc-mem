@@ -1,0 +1,224 @@
+"""
+Configuration management via config.json.
+
+First run (no config.json):
+  1. Legacy .env found? → migrate its values into a new config.json (backward compat)
+  2. Environment variables exist (Docker)? → generate config.json from them
+  3. Nothing? → create config.json with defaults
+
+After config.json exists: it is the sole source of truth. Period.
+All settings can be changed via the Dashboard Settings UI or by editing config.json directly.
+"""
+
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any, Optional
+
+_BACKEND_DIR = Path(__file__).resolve().parent
+# 兼容 Docker 部署：Dockerfile 把 backend/* 复制到 WORKDIR，所以容器内
+# _BACKEND_DIR 本身就是根目录；本地开发则是 backend/，根目录在上一级。
+_IN_DOCKER = Path("/.dockerenv").exists()
+ROOT_DIR = _BACKEND_DIR if _IN_DOCKER else _BACKEND_DIR.parent
+CONFIG_PATH = ROOT_DIR / "config.json"
+
+
+def _default_database_url() -> str:
+    db_path = (ROOT_DIR / "demo.db").resolve()
+    return f"sqlite+aiosqlite:///{db_path.as_posix()}"
+
+
+DEFAULTS: dict[str, Any] = {
+    "database_url": _default_database_url(),
+    "valid_domains": ["core", "writer", "game", "notes", "narrative"],
+    "boot_uris": {},
+    "host": "127.0.0.1",
+    "web_port": 8233,
+    "auto_open_browser": True,
+    "api_token": None,
+    "cors_origins": None,
+    "public_readonly_mcp": False,
+}
+
+_ENV_MAP: dict[str, str] = {
+    "database_url": "DATABASE_URL",
+    "valid_domains": "VALID_DOMAINS",
+    "host": "HOST",
+    "web_port": "WEB_PORT",
+    "auto_open_browser": "AUTO_OPEN_BROWSER",
+    "api_token": "API_TOKEN",
+    "cors_origins": "CORS_ORIGINS",
+    "public_readonly_mcp": "PUBLIC_READONLY_MCP",
+}
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _save_file(cfg: dict) -> None:
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
+def _coerce(key: str, raw: str) -> Any:
+    if key == "valid_domains":
+        return [d.strip() for d in raw.split(",") if d.strip()]
+    if key == "web_port":
+        return int(raw)
+    if key in ("auto_open_browser", "public_readonly_mcp"):
+        return raw.lower() not in ("false", "0", "no")
+    return raw
+
+
+def _extract_boot_uris(source: dict) -> dict[str, list[str]]:
+    """Extract boot URI config from a flat key-value dict (dotenv or os.environ)."""
+    boot: dict[str, list[str]] = {}
+    if "CORE_MEMORY_URIS" in source:
+        base = source["CORE_MEMORY_URIS"] or ""
+        boot[""] = [u.strip() for u in base.split(",") if u.strip()]
+    for key, val in source.items():
+        if key.startswith("CORE_MEMORY_URIS__"):
+            ns = key[len("CORE_MEMORY_URIS__"):]
+            val_str = val or ""
+            boot[ns] = [u.strip() for u in val_str.split(",") if u.strip()]
+    return boot
+
+
+def _build_cfg_from_kvs(kvs: dict) -> dict:
+    """Build a config dict from flat key-value pairs (.env or env vars)."""
+    cfg = dict(DEFAULTS)
+    for cfg_key, env_key in _ENV_MAP.items():
+        val = kvs.get(env_key)
+        # 统一标准：只认 WEB_PORT。PORT 仅作为历史遗留的 fallback。
+        if cfg_key == "web_port" and not val:
+            val = kvs.get("PORT")
+        if val:
+            cfg[cfg_key] = _coerce(cfg_key, val)
+    boot = _extract_boot_uris(kvs)
+    if boot:
+        cfg["boot_uris"] = boot
+    return cfg
+
+
+def _migrate_from_dotenv() -> Optional[dict]:
+    """Read .env and return a config dict, or None if no .env."""
+    dotenv_path = ROOT_DIR / ".env"
+    if not dotenv_path.exists():
+        return None
+    try:
+        from dotenv import dotenv_values
+        env = dotenv_values(dotenv_path)
+    except ImportError:
+        return None
+    if not env:
+        return None
+    print("[Nocturne] Migrating settings from .env → config.json", file=sys.stderr)
+    return _build_cfg_from_kvs(env)
+
+
+def _migrate_from_env_vars() -> Optional[dict]:
+    """Build config from os.environ (Docker first boot). Returns None if nothing relevant found."""
+    # Only trigger on Nocturne-specific vars to avoid false positives from
+    # common env vars like PORT that exist in many environments.
+    strong_signals = {"DATABASE_URL", "API_TOKEN", "VALID_DOMAINS", "CORE_MEMORY_URIS"}
+    if not any(k in strong_signals or k.startswith("CORE_MEMORY_URIS__") for k in os.environ):
+        return None
+    print("[Nocturne] Generating config.json from environment variables", file=sys.stderr)
+    return _build_cfg_from_kvs(dict(os.environ))
+
+
+# ---------------------------------------------------------------------------
+# Config loading (cached per-process)
+# ---------------------------------------------------------------------------
+
+_cache: Optional[dict] = None
+
+
+def _load() -> dict:
+    global _cache
+
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            _cache = json.load(f)
+        return _cache
+
+    cfg = _migrate_from_dotenv()
+    if cfg is None:
+        cfg = _migrate_from_env_vars()
+    if cfg is None:
+        cfg = dict(DEFAULTS)
+
+    _save_file(cfg)
+    _cache = cfg
+    return _cache
+
+
+def _invalidate():
+    global _cache
+    _cache = None
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def get(key: str) -> Any:
+    """Get a config value. Reads only from config.json."""
+    return _load().get(key, DEFAULTS.get(key))
+
+
+def get_boot_uris(namespace: str = "") -> list[str]:
+    """Get boot URIs for a namespace."""
+    boot = _load().get("boot_uris", {})
+    if namespace in boot:
+        return boot[namespace]
+    if "" in boot:
+        return boot[""]
+    return []
+
+
+def get_all_boot_uris() -> dict[str, list[str]]:
+    """Get the full boot_uris dict (all namespaces)."""
+    return dict(_load().get("boot_uris", {}))
+
+
+def set_boot_uris(uris: list[str], namespace: str = "") -> None:
+    cfg = _load()
+    if "boot_uris" not in cfg:
+        cfg["boot_uris"] = {}
+    cfg["boot_uris"][namespace] = uris
+    _save_file(cfg)
+    _invalidate()
+
+
+def delete_boot_uris(namespace: str) -> bool:
+    """Remove a namespace override. Returns True if it existed."""
+    cfg = _load()
+    boot = cfg.get("boot_uris", {})
+    if namespace not in boot:
+        return False
+    del boot[namespace]
+    _save_file(cfg)
+    _invalidate()
+    return True
+
+
+def set_value(key: str, value: Any) -> None:
+    cfg = _load()
+    cfg[key] = value
+    _save_file(cfg)
+    _invalidate()
+
+
+def get_all() -> dict:
+    """Get all settings for the UI."""
+    return dict(_load())
+
+
+def ensure_config_exists() -> None:
+    _load()
+
+

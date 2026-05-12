@@ -23,7 +23,7 @@ import sys
 import webbrowser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from dotenv import load_dotenv, find_dotenv
+import config as _cfg
 
 # Ensure we can import from backend modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -53,19 +53,6 @@ from system_views import (
 )
 import contextlib
 
-# Load environment variables
-# Explicitly look for .env in the parent directory (project root)
-current_dir = os.path.dirname(os.path.abspath(__file__))
-root_dir = os.path.dirname(current_dir)
-dotenv_path = os.path.join(root_dir, ".env")
-
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path)
-else:
-    # Fallback to find_dotenv
-    _dotenv_path = find_dotenv(usecwd=True)
-    if _dotenv_path:
-        load_dotenv(_dotenv_path)
 
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -89,7 +76,7 @@ def build_web_app(*, extra_routes=None, extra_prefixes=None, lifespan=None):
     from starlette.types import ASGIApp, Receive, Scope, Send
     from auth import BearerTokenAuthMiddleware, get_cors_config
     from namespace_middleware import NamespaceMiddleware
-    from api import review_router, browse_router, maintenance_router
+    from api import review_router, browse_router, maintenance_router, settings_router
     from health import router as health_router, health_check
 
     api = FastAPI(
@@ -101,6 +88,7 @@ def build_web_app(*, extra_routes=None, extra_prefixes=None, lifespan=None):
     api.include_router(review_router)
     api.include_router(browse_router)
     api.include_router(maintenance_router)
+    api.include_router(settings_router)
 
     routes = list(extra_routes or [])
     routes.append(Mount("/api", app=api))
@@ -228,6 +216,8 @@ async def lifespan(server: FastMCP):
     web_server = None
     web_task = None
     try:
+        _cfg.ensure_config_exists()
+
         db_manager = get_db_manager()
         if os.environ.get("SKIP_DB_INIT", "").lower() not in ("true", "1", "yes"):
             await db_manager.init_db()
@@ -241,8 +231,8 @@ async def lifespan(server: FastMCP):
             import uvicorn
             from auth import enforce_network_auth
 
-            port = int(os.environ.get("WEB_PORT", "8233"))
-            web_host = os.environ.get("WEB_HOST", "127.0.0.1")
+            port = int(_cfg.get("web_port"))
+            web_host = _cfg.get("host")
             enforce_network_auth(host=web_host)
             config = uvicorn.Config(
                 build_web_app(), host=web_host, port=port, log_level="warning",
@@ -270,7 +260,7 @@ async def lifespan(server: FastMCP):
             print(f"Admin UI:  {ui}", file=sys.stderr)
             print(f"REST API:  {api_docs}", file=sys.stderr)
 
-            auto_open = os.environ.get("AUTO_OPEN_BROWSER", "true").lower() not in ("false", "0", "no")
+            auto_open = _cfg.get("auto_open_browser")
             if auto_open:
                 async def _open_browser():
                     while not getattr(web_server, "started", False):
@@ -303,17 +293,15 @@ mcp = FastMCP(
 # =============================================================================
 # Valid domains (protocol prefixes)
 # =============================================================================
-VALID_DOMAINS = [
-    d.strip()
-    for d in os.getenv("VALID_DOMAINS", "core,writer,game,notes,narrative,system").split(",")
+
+_domains_from_config = _cfg.get("valid_domains")
+VALID_DOMAINS = _domains_from_config if isinstance(_domains_from_config, list) else [
+    d.strip() for d in str(_domains_from_config).split(",") if d.strip()
 ]
+if "system" not in VALID_DOMAINS:
+    VALID_DOMAINS.append("system")
 DEFAULT_DOMAIN = "core"
-PUBLIC_READONLY_MCP = os.getenv("PUBLIC_READONLY_MCP", "").lower() in (
-    "1",
-    "true",
-    "yes",
-    "on",
-)
+PUBLIC_READONLY_MCP = bool(_cfg.get("public_readonly_mcp"))
 
 
 
@@ -448,39 +436,8 @@ async def read_memory(uri: str) -> str:
     # HARDCODED SYSTEM INTERCEPTIONS
     # These bypass the database lookup to serve dynamic system content
     if uri.strip() == "system://boot":
-        from dotenv import dotenv_values
-
         ns = get_namespace()
-        ns_key = f"CORE_MEMORY_URIS__{ns}" if ns else ""
-
-        if "PYTEST_CURRENT_TEST" in os.environ:
-            core_uris_str = None
-            if ns_key and ns_key in os.environ:
-                core_uris_str = os.environ[ns_key]
-            if core_uris_str is None:
-                core_uris_str = os.environ.get("CORE_MEMORY_URIS", "")
-        else:
-            current_env_path = dotenv_path if os.path.exists(dotenv_path) else globals().get('_dotenv_path')
-            env_vars = dotenv_values(current_env_path) if current_env_path else {}
-
-            core_uris_str = None
-            if ns_key:
-                if ns_key in env_vars:
-                    core_uris_str = env_vars[ns_key]
-                elif ns_key in os.environ:
-                    core_uris_str = os.environ[ns_key]
-            
-            if core_uris_str is None:
-                if "CORE_MEMORY_URIS" in env_vars:
-                    core_uris_str = env_vars["CORE_MEMORY_URIS"]
-                elif "CORE_MEMORY_URIS" in os.environ:
-                    core_uris_str = os.environ["CORE_MEMORY_URIS"]
-                else:
-                    core_uris_str = ""
-
-        current_core_uris = [
-            u.strip() for u in core_uris_str.split(",") if u.strip()
-        ]
+        current_core_uris = _cfg.get_boot_uris(ns)
         return await generate_boot_memory_view(current_core_uris)
 
     # system://index/<domain>
