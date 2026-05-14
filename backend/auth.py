@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+from pathlib import Path
 from typing import Iterable, Sequence
 
 import config as _cfg
@@ -162,6 +163,19 @@ def enforce_network_auth(*, host: str = "0.0.0.0") -> None:
             stacklevel=2,
         )
         return
+    if Path("/.dockerenv").exists():
+        raise RuntimeError(
+            f"\n\n"
+            f"  API_TOKEN is not set, but HOST={host!r} is network-reachable.\n"
+            f"\n"
+            f"  Docker fix:\n"
+            f"\n"
+            f"    python scripts/setup_docker.py\n"
+            f"    docker compose up -d --build\n"
+            f"\n"
+            f"  This creates/migrates config.json and prints the Bearer token "
+            f"for your MCP client.\n"
+        )
     raise RuntimeError(
         f"\n\n"
         f"  API_TOKEN is not set, but HOST={host!r} is network-reachable.\n"

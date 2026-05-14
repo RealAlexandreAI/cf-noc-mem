@@ -41,7 +41,7 @@ def _default_database_url() -> str:
 DEFAULTS: dict[str, Any] = {
     "database_url": _default_database_url(),
     "valid_domains": ["core", "writer", "game", "notes", "narrative"],
-    "boot_uris": {},
+    "boot_uris": {"": ["core://agent", "core://my_user", "core://agent/my_user"]},
     "host": "127.0.0.1",
     "web_port": 8233,
     "auto_open_browser": True,
@@ -69,6 +69,24 @@ _ENV_MAP: dict[str, str] = {
 class ConfigWriteError(Exception):
     """Raised when config.json cannot be written due to permissions."""
     pass
+
+
+def _docker_setup_hint() -> str:
+    return (
+        "Docker configuration is missing or invalid.\n"
+        "\n"
+        "If you upgraded an older Docker deployment, run this on the host from "
+        "the repository root:\n"
+        "\n"
+        "  python scripts/setup_docker.py\n"
+        "  docker compose up -d --build\n"
+        "\n"
+        "This migrates the old .env settings into config.json while preserving "
+        "your existing PostgreSQL credentials and volume.\n"
+        "\n"
+        "If ./config.json was accidentally created as a directory by Docker, "
+        "remove that directory first, then rerun the setup command."
+    )
 
 
 def _save_file(cfg: dict) -> None:
@@ -225,8 +243,22 @@ def _load() -> dict:
     global _cache
 
     if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            _cache = json.load(f)
+        if CONFIG_PATH.is_dir():
+            if _IN_DOCKER:
+                raise RuntimeError(_docker_setup_hint())
+            raise RuntimeError(
+                f"{CONFIG_PATH} is a directory, but Nocturne expects a JSON file."
+            )
+
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                _cache = json.load(f)
+        except json.JSONDecodeError as e:
+            if _IN_DOCKER:
+                raise RuntimeError(
+                    f"Failed to parse config.json: {e}\n\n{_docker_setup_hint()}"
+                ) from e
+            raise
             
         if _migrate_away_from_demo(_cache):
             try:
@@ -244,6 +276,8 @@ def _load() -> dict:
     if cfg is None:
         cfg = _migrate_from_env_vars()
     if cfg is None:
+        if _IN_DOCKER:
+            raise RuntimeError(_docker_setup_hint())
         cfg = dict(DEFAULTS)
 
     migrated = _migrate_away_from_demo(cfg)

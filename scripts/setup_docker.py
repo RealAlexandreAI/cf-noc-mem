@@ -126,7 +126,7 @@ def main():
     }
     docker_defaults = {
         "valid_domains": ["core", "writer", "game", "notes", "narrative"],
-        "boot_uris": {},
+        "boot_uris": {"": ["core://agent", "core://my_user", "core://agent/my_user"]},
         "cors_origins": None,
         "public_readonly_mcp": False,
     }
