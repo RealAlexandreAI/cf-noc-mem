@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Knowledge Graph API",
     description="AI长期记忆知识图谱后端",
-    version="2.4.1",
+    version="2.5.0",
     lifespan=lifespan,
 )
 
@@ -86,7 +86,7 @@ async def config_write_error_handler(request: Request, exc: ConfigWriteError):
 @app.get("/")
 async def root():
     """根路径"""
-    return {"message": "Knowledge Graph API", "version": "2.4.1", "docs": "/docs"}
+    return {"message": "Knowledge Graph API", "version": "2.5.0", "docs": "/docs"}
 
 
 if __name__ == "__main__":
