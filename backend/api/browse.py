@@ -7,7 +7,9 @@ hierarchical browser. Every path is just a node with content and children.
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from db import get_graph_service, get_glossary_service, get_db_manager
+from typing import Optional
+import config
+from db import get_graph_service, get_glossary_service, get_db_manager, get_search_indexer
 from db.models import Path as PathModel, Edge as EdgeModel, ROOT_NODE_UUID
 from db.namespace import get_namespace
 from sqlalchemy import select, distinct
@@ -279,3 +281,58 @@ async def remove_glossary_keyword(body: GlossaryRemove):
     if not result.get("success"):
         raise HTTPException(status_code=404, detail="Keyword binding not found")
     return {"success": True}
+
+
+# =============================================================================
+# Delete Endpoint
+# =============================================================================
+
+
+@router.delete("/node")
+async def delete_node(
+    path: str = Query(...),
+    domain: str = Query("core"),
+):
+    """
+    Delete a memory by removing its URI path.
+
+    Human-facing direct delete: bypasses changeset/review queue.
+    Calls graph.remove_path() which handles orphan prevention.
+    """
+    graph = get_graph_service()
+
+    memory = await graph.get_memory_by_path(path, domain=domain, namespace=get_namespace())
+    if not memory:
+        raise HTTPException(status_code=404, detail=f"Path not found: {domain}://{path}")
+
+    try:
+        await graph.remove_path(path, domain, namespace=get_namespace())
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    deleted_uri = f"{domain}://{path}"
+    subtree_prefix = deleted_uri + "/"
+    ns = get_namespace()
+    boot_uris = config.get_boot_uris(ns)
+    cleaned = [u for u in boot_uris if u != deleted_uri and not u.startswith(subtree_prefix)]
+    if len(cleaned) != len(boot_uris):
+        config.set_boot_uris(cleaned, ns)
+
+    return {"success": True, "uri": deleted_uri}
+
+
+# =============================================================================
+# Search Endpoint
+# =============================================================================
+
+
+@router.get("/search")
+async def search_memories(
+    q: str = Query(..., min_length=1, description="Search query"),
+    domain: Optional[str] = Query(None, description="Optional domain filter"),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Full-text search across memories using the FTS index."""
+    search = get_search_indexer()
+    results = await search.search(q, limit=limit, domain=domain, namespace=get_namespace())
+    return {"query": q, "results": results, "count": len(results)}

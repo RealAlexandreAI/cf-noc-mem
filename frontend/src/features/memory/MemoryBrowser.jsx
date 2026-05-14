@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
   Folder, 
@@ -10,10 +10,14 @@ import {
   AlertTriangle,
   Link2,
   Star,
-  Zap
+  Zap,
+  Trash2,
+  Search,
+  FileText,
+  Loader2,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { api, getSettingsBootUris, toggleSettingsBootUri } from '../../lib/api';
+import { api, getSettingsBootUris, toggleSettingsBootUri, deleteNode, searchMemories } from '../../lib/api';
 import PriorityBadge from './components/PriorityBadge';
 import GlossaryHighlighter from './components/GlossaryHighlighter';
 import KeywordManager from './components/KeywordManager';
@@ -37,6 +41,17 @@ export default function MemoryBrowser() {
   const [editPriority, setEditPriority] = useState(0);
   const [saving, setSaving] = useState(false);
   const [bootUris, setBootUris] = useState([]);
+
+  // Delete
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const searchTimeoutRef = useRef(null);
+  const searchSeqRef = useRef(0);
 
   const currentRouteRef = useRef({ domain, path });
   useEffect(() => {
@@ -134,6 +149,55 @@ export default function MemoryBrowser() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteNode(deleteTarget.domain, deleteTarget.path);
+      setDeleteTarget(null);
+      const parentPath = deleteTarget.path.includes('/') ? deleteTarget.path.substring(0, deleteTarget.path.lastIndexOf('/')) : '';
+      navigateTo(parentPath, deleteTarget.domain);
+    } catch (err) {
+      alert('Delete failed: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleSearch = useCallback((query) => {
+    setSearchQuery(query);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (!query.trim()) {
+      searchSeqRef.current++;
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    setSearchResults(null);
+    const seq = ++searchSeqRef.current;
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await searchMemories(query.trim());
+        if (seq !== searchSeqRef.current) return;
+        setSearchResults(res.results);
+      } catch {
+        if (seq !== searchSeqRef.current) return;
+        setSearchResults([]);
+      } finally {
+        if (seq === searchSeqRef.current) setSearching(false);
+      }
+    }, 300);
+  }, []);
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchResults(null);
+    setSearching(false);
+    searchSeqRef.current++;
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+  };
+
   const isRoot = !path;
   const node = data.node;
   const currentUri = `${domain}://${path}`;
@@ -190,11 +254,70 @@ export default function MemoryBrowser() {
 
       {/* Main Area */}
       <div className="flex-1 flex flex-col min-w-0 bg-[#05050A] relative">
-         <div className="h-14 flex-shrink-0 border-b border-slate-800/30 flex items-center px-6 bg-[#05050A]/80 backdrop-blur-md sticky top-0 z-20">
+         <div className="h-14 flex-shrink-0 border-b border-slate-800/30 flex items-center px-6 bg-[#05050A]/80 backdrop-blur-md sticky top-0 z-20 gap-4">
              <Breadcrumb items={data.breadcrumbs} onNavigate={navigateTo} />
+             <div className="ml-auto relative flex-shrink-0 w-72">
+               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" />
+               <input
+                 type="text"
+                 value={searchQuery}
+                 onChange={e => handleSearch(e.target.value)}
+                 placeholder="Search memories..."
+                 className="w-full bg-slate-900/60 border border-slate-800/50 rounded-lg pl-9 pr-8 py-1.5 text-sm text-slate-300 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-colors"
+               />
+               {searchQuery && (searching
+                 ? <Loader2 size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-indigo-400 animate-spin" />
+                 : <button onClick={clearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-400 transition-colors">
+                     <X size={14} />
+                   </button>
+               )}
+             </div>
          </div>
 
-         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+         {/* Search Results Overlay */}
+         {searchResults !== null && (
+           <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+             <div className="max-w-7xl mx-auto space-y-4">
+               <div className="flex items-center justify-between">
+                 <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+                   {searchResults.length > 0 
+                     ? `${searchResults.length} result${searchResults.length > 1 ? 's' : ''} for "${searchQuery}"`
+                     : `No results for "${searchQuery}"`}
+                 </h2>
+                 <button onClick={clearSearch} className="text-xs text-slate-600 hover:text-slate-400 transition-colors px-3 py-1 border border-slate-800 rounded hover:border-slate-700">
+                   Back to browser
+                 </button>
+               </div>
+               {searchResults.map((item, i) => (
+                 <button
+                   key={`${item.uri}-${i}`}
+                   onClick={() => { clearSearch(); navigateTo(item.path, item.domain); }}
+                   className="w-full flex items-start gap-4 p-4 bg-[#0A0A12] border border-slate-800/50 rounded-xl hover:border-indigo-500/30 hover:shadow-[0_0_20px_rgba(99,102,241,0.08)] transition-all text-left group"
+                 >
+                   <div className="p-2 rounded-lg bg-slate-900 text-slate-500 group-hover:text-indigo-400 group-hover:bg-indigo-900/20 transition-colors flex-shrink-0 mt-0.5">
+                     <FileText size={16} />
+                   </div>
+                   <div className="min-w-0 flex-1">
+                     <div className="flex items-center gap-2 mb-1">
+                       <span className="text-sm font-semibold text-slate-300 group-hover:text-indigo-200 transition-colors">{item.name}</span>
+                       <PriorityBadge priority={item.priority} />
+                     </div>
+                     <code className="text-[11px] font-mono text-slate-600 block mb-1.5">{item.uri}</code>
+                     {item.snippet && <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{item.snippet}</p>}
+                     {item.disclosure && (
+                       <p className="text-[11px] text-amber-500/70 mt-1.5 flex items-center gap-1">
+                         <AlertTriangle size={10} className="flex-shrink-0" />
+                         <span className="italic truncate">{item.disclosure}</span>
+                       </p>
+                     )}
+                   </div>
+                 </button>
+               ))}
+             </div>
+           </div>
+         )}
+
+         <div className={clsx("flex-1 overflow-y-auto p-6 custom-scrollbar", searchResults !== null && "hidden")}>
             {loading ? (
                 <div className="h-full flex flex-col items-center justify-center gap-4 text-slate-600">
                     <div className="w-8 h-8 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
@@ -275,9 +398,18 @@ export default function MemoryBrowser() {
                                             </button>
                                         </>
                                     ) : !node.is_virtual && (
-                                        <button onClick={startEditing} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-sm font-medium transition-colors border border-slate-700 hover:border-slate-600">
-                                            <Edit3 size={16} /> Edit
-                                        </button>
+                                        <>
+                                            <button onClick={startEditing} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-sm font-medium transition-colors border border-slate-700 hover:border-slate-600">
+                                                <Edit3 size={16} /> Edit
+                                            </button>
+                                            <button
+                                              onClick={() => setDeleteTarget({ domain, path })}
+                                              className="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 rounded text-sm font-medium transition-colors border border-slate-700 hover:border-rose-800/50"
+                                              title="Delete this memory"
+                                            >
+                                              <Trash2 size={16} />
+                                            </button>
+                                        </>
                                     )}
                                 </div>
                             </div>
@@ -378,6 +510,45 @@ export default function MemoryBrowser() {
             )}
          </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="bg-[#0C0C14] border border-slate-800 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 rounded-lg bg-rose-950/40 text-rose-400">
+                <Trash2 size={20} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-100">Delete Memory</h3>
+                <p className="text-xs text-slate-500 mt-0.5">This action is irreversible</p>
+              </div>
+            </div>
+            <div className="mb-5 p-3 bg-slate-900/60 border border-slate-800/50 rounded-lg">
+              <code className="text-sm font-mono text-rose-300/80 break-all">{deleteTarget.domain}://{deleteTarget.path}</code>
+            </div>
+            <p className="text-sm text-slate-400 mb-6">
+              Are you sure you want to delete this memory path? If this is the node's last path, the content will become an orphan.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition-colors shadow-lg shadow-rose-900/20 disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -59,6 +59,12 @@ export const getDomains = () =>
 export const getNamespaces = () =>
   api.get('/browse/namespaces').then(res => res.data);
 
+export const deleteNode = (domain, path) =>
+  api.delete('/browse/node', { params: { domain, path } }).then(res => res.data);
+
+export const searchMemories = (q, { domain, limit } = {}) =>
+  api.get('/browse/search', { params: { q, domain, limit } }).then(res => res.data);
+
 // ============ Settings API ============
 
 export const getSettings = () =>

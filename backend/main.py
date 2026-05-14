@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from api import review_router, browse_router, maintenance_router, settings_router
@@ -9,6 +10,7 @@ from health import router as health_router
 import argparse
 import os
 import config as _cfg
+from config import ConfigWriteError
 from auth import enforce_network_auth
 
 # 正式启动路径只有 python main.py，host 从 config 读。
@@ -71,6 +73,14 @@ app.include_router(review_router)
 app.include_router(browse_router)
 app.include_router(maintenance_router)
 app.include_router(settings_router)
+
+
+@app.exception_handler(ConfigWriteError)
+async def config_write_error_handler(request: Request, exc: ConfigWriteError):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+    )
 
 
 @app.get("/")

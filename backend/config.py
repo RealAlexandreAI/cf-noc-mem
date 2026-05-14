@@ -12,6 +12,8 @@ All settings can be changed via the Dashboard Settings UI or by editing config.j
 
 import json
 import os
+import secrets
+import shutil
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -23,9 +25,12 @@ _IN_DOCKER = Path("/.dockerenv").exists()
 ROOT_DIR = _BACKEND_DIR if _IN_DOCKER else _BACKEND_DIR.parent
 CONFIG_PATH = ROOT_DIR / "config.json"
 
+_DEMO_DB = "demo.db"
+_USER_DB = "nocturne_data.db"
+
 
 def _default_database_url() -> str:
-    db_path = (ROOT_DIR / "demo.db").resolve()
+    db_path = (ROOT_DIR / _DEMO_DB).resolve()
     return f"sqlite+aiosqlite:///{db_path.as_posix()}"
 
 
@@ -57,10 +62,22 @@ _ENV_MAP: dict[str, str] = {
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+class ConfigWriteError(Exception):
+    """Raised when config.json cannot be written due to permissions."""
+    pass
+
+
 def _save_file(cfg: dict) -> None:
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+    except PermissionError as e:
+        raise ConfigWriteError(
+            f"Permission denied writing to {CONFIG_PATH.name}. "
+            "If using Docker on Linux, ensure the container user (UID 1000) has write access "
+            "(e.g. run `sudo chown 1000 config.json` on the host)."
+        ) from e
 
 
 def _coerce(key: str, raw: str) -> Any:
@@ -71,6 +88,61 @@ def _coerce(key: str, raw: str) -> Any:
     if key in ("auto_open_browser", "public_readonly_mcp"):
         return raw.lower() not in ("false", "0", "no")
     return raw
+
+
+def _db_path_from_url(url: str) -> Optional[Path]:
+    """Extract the file path from a sqlite database_url, or None if not sqlite."""
+    prefix = "sqlite+aiosqlite:///"
+    if not url.startswith(prefix):
+        return None
+    raw = url[len(prefix):]
+    return Path(raw) if raw else None
+
+
+def _make_db_url(path: Path) -> str:
+    return f"sqlite+aiosqlite:///{path.resolve().as_posix()}"
+
+
+def _unique_db_path(directory: Path, base_name: str) -> Path:
+    """Return a non-colliding path under *directory*. Tries base_name first,
+    then appends random hex suffixes until a free slot is found."""
+    stem = Path(base_name).stem
+    suffix = Path(base_name).suffix
+    candidate = directory / base_name
+    if not candidate.exists():
+        return candidate
+    for _ in range(100):
+        rand = secrets.token_hex(3)
+        candidate = directory / f"{stem}_{rand}{suffix}"
+        if not candidate.exists():
+            return candidate
+    return directory / f"{stem}_{secrets.token_hex(8)}{suffix}"
+
+
+def _migrate_away_from_demo(cfg: dict) -> bool:
+    """If database_url points to demo.db, copy it to a user-owned file that is
+    safe from ``git pull`` overwrites.  Returns True if the config was changed."""
+    url = cfg.get("database_url", "")
+    db_path = _db_path_from_url(url)
+    if db_path is None:
+        return False
+    if db_path.name != _DEMO_DB:
+        return False
+
+    target = _unique_db_path(db_path.parent, _USER_DB)
+
+    if db_path.exists():
+        shutil.copy2(str(db_path), str(target))
+        print(
+            f"[Nocturne] Copied {_DEMO_DB} → {target.name}"
+            " (your data is now safe from git pull overwrites)",
+            file=sys.stderr,
+        )
+    else:
+        print(f"[Nocturne] Using {target.name} as your database", file=sys.stderr)
+
+    cfg["database_url"] = _make_db_url(target)
+    return True
 
 
 def _extract_boot_uris(source: dict) -> dict[str, list[str]]:
@@ -143,6 +215,8 @@ def _load() -> dict:
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             _cache = json.load(f)
+        if _migrate_away_from_demo(_cache):
+            _save_file(_cache)
         return _cache
 
     cfg = _migrate_from_dotenv()
@@ -151,6 +225,7 @@ def _load() -> dict:
     if cfg is None:
         cfg = dict(DEFAULTS)
 
+    _migrate_away_from_demo(cfg)
     _save_file(cfg)
     _cache = cfg
     return _cache

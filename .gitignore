@@ -5,6 +5,7 @@ config.json
 .vscode
 backend/README.md
 nocturne_memory.db
+nocturne_data*.db
 migration_log.json
 scripts/backup_memory.ps1
 *.bak

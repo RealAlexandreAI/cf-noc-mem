@@ -78,12 +78,23 @@ def build_web_app(*, extra_routes=None, extra_prefixes=None, lifespan=None):
     from namespace_middleware import NamespaceMiddleware
     from api import review_router, browse_router, maintenance_router, settings_router
     from health import router as health_router, health_check
+    from config import ConfigWriteError
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
 
     api = FastAPI(
         title="Nocturne Memory API",
         docs_url="/docs",
         openapi_url="/openapi.json",
     )
+    
+    @api.exception_handler(ConfigWriteError)
+    async def config_write_error_handler(request: Request, exc: ConfigWriteError):
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc)},
+        )
+        
     api.include_router(health_router)
     api.include_router(review_router)
     api.include_router(browse_router)
@@ -418,7 +429,6 @@ async def read_memory(uri: str) -> str:
     - system://recent : Shows recently modified memories (default: 10).
     - system://recent/N : Shows the N most recently modified memories (e.g. system://recent/20).
     - system://glossary : Shows all glossary keywords and their bound nodes.
-    - system://diagnostic/<domain> : Generates a diagnostic report of stale, crowded, and orphaned nodes for a specific domain.
 
     Note: Same Memory ID = same content (alias). Different ID + similar content = redundant content.
 
