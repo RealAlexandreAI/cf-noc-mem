@@ -15,6 +15,7 @@ import secrets
 import sys
 import re
 from pathlib import Path
+from urllib.parse import quote, unquote
 
 ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = ROOT / ".env"
@@ -45,7 +46,7 @@ def _extract_pg_credentials_from_url(url: str) -> tuple[str | None, str | None, 
         return None, None, None
     match = re.search(r"://([^:]+):([^@]+)@[^/]+/([^?]+)", url)
     if match:
-        return match.group(1), match.group(2), match.group(3)
+        return unquote(match.group(1)), unquote(match.group(2)), unquote(match.group(3))
     return None, None, None
 
 
@@ -117,7 +118,7 @@ def main():
 
     # --- config.json (App SSOT) ---
     docker_required = {
-        "database_url": f"postgresql+asyncpg://{pg_user}:{pg_password}@postgres:5432/{pg_db}?ssl=disable",
+        "database_url": f"postgresql+asyncpg://{quote(pg_user, safe='')}:{quote(pg_password, safe='')}@postgres:5432/{quote(pg_db, safe='')}?ssl=disable",
         "host": "0.0.0.0",
         "web_port": 8233,
         "auto_open_browser": False,

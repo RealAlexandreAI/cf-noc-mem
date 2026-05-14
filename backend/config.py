@@ -2,12 +2,16 @@
 Configuration management via config.json.
 
 First run (no config.json):
-  1. Legacy .env found? → migrate its values into a new config.json (backward compat)
+  1. Legacy .env with app-level keys (DATABASE_URL etc.)? → migrate to config.json
   2. Environment variables exist (Docker)? → generate config.json from them
   3. Nothing? → create config.json with defaults
 
 After config.json exists: it is the sole source of truth. Period.
 All settings can be changed via the Dashboard Settings UI or by editing config.json directly.
+
+IMPORTANT: config.py NEVER writes to .env. The .env → config.json migration is
+read-only and one-directional. .env files containing only Docker Compose vars
+(POSTGRES_USER/PASSWORD/DB) are ignored to prevent generating default configs.
 """
 
 import json
@@ -73,11 +77,14 @@ def _save_file(cfg: dict) -> None:
             json.dump(cfg, f, indent=2, ensure_ascii=False)
             f.write("\n")
     except PermissionError as e:
-        raise ConfigWriteError(
-            f"Permission denied writing to {CONFIG_PATH.name}. "
-            "If using Docker on Linux, ensure the container user (UID 1000) has write access "
-            "(e.g. run `sudo chown 1000 config.json` on the host)."
-        ) from e
+        import sys
+        print(f"[Warning] Permission denied writing to {CONFIG_PATH.name}. Settings will only persist in memory until restart.", file=sys.stderr)
+        msg = f"Permission denied writing to {CONFIG_PATH.name}. "
+        if _IN_DOCKER:
+            msg += "If using Docker on Linux, ensure the container user (UID 1000) has write access (e.g. run `sudo chown 1000 config.json` on the host)."
+        else:
+            msg += "Ensure the current user has write access to this file and its parent directory."
+        raise ConfigWriteError(msg) from e
 
 
 def _coerce(key: str, raw: str) -> Any:
@@ -146,7 +153,7 @@ def _migrate_away_from_demo(cfg: dict) -> bool:
 
 
 def _extract_boot_uris(source: dict) -> dict[str, list[str]]:
-    """Extract boot URI config from a flat key-value dict (dotenv or os.environ)."""
+    """Extract boot URI config from a flat key-value dict (os.environ)."""
     boot: dict[str, list[str]] = {}
     if "CORE_MEMORY_URIS" in source:
         base = source["CORE_MEMORY_URIS"] or ""
@@ -175,8 +182,11 @@ def _build_cfg_from_kvs(kvs: dict) -> dict:
     return cfg
 
 
+
 def _migrate_from_dotenv() -> Optional[dict]:
-    """Read .env and return a config dict, or None if no .env."""
+    """One-time migration: read legacy .env and build a config dict.
+    Only triggers if .env contains app-level keys (DATABASE_URL, API_TOKEN, etc.),
+    not just Docker Compose vars (POSTGRES_USER/PASSWORD/DB)."""
     dotenv_path = ROOT_DIR / ".env"
     if not dotenv_path.exists():
         return None
@@ -186,6 +196,9 @@ def _migrate_from_dotenv() -> Optional[dict]:
     except ImportError:
         return None
     if not env:
+        return None
+    app_keys = set(_ENV_MAP.values()) | {"CORE_MEMORY_URIS"}
+    if not any(k in app_keys or k.startswith("CORE_MEMORY_URIS__") for k in env):
         return None
     print("[Nocturne] Migrating settings from .env → config.json", file=sys.stderr)
     return _build_cfg_from_kvs(env)
@@ -208,15 +221,23 @@ def _migrate_from_env_vars() -> Optional[dict]:
 
 _cache: Optional[dict] = None
 
-
 def _load() -> dict:
     global _cache
 
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             _cache = json.load(f)
+            
         if _migrate_away_from_demo(_cache):
-            _save_file(_cache)
+            try:
+                _save_file(_cache)
+            except ConfigWriteError as e:
+                raise RuntimeError(
+                    f"Database migrated from {_DEMO_DB} but config.json is not writable. "
+                    f"Starting without persisting this change would lose data on restart. "
+                    f"Fix file permissions and restart."
+                ) from e
+
         return _cache
 
     cfg = _migrate_from_dotenv()
@@ -225,8 +246,17 @@ def _load() -> dict:
     if cfg is None:
         cfg = dict(DEFAULTS)
 
-    _migrate_away_from_demo(cfg)
-    _save_file(cfg)
+    migrated = _migrate_away_from_demo(cfg)
+    try:
+        _save_file(cfg)
+    except ConfigWriteError as e:
+        if migrated:
+            raise RuntimeError(
+                f"Database migrated from {_DEMO_DB} but config.json is not writable. "
+                f"Starting without persisting this change would lose data on restart. "
+                f"Fix file permissions and restart."
+            ) from e
+
     _cache = cfg
     return _cache
 
