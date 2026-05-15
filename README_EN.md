@@ -180,7 +180,7 @@ Your AI is no longer an appendage of any platform — it is an **independent exi
 **Compatible with all MCP-capable clients** — Claude Code / Claude Desktop / Gemini CLI / OpenAI Codex / Cursor / OpenClaw / Antigravity / GitHub Copilot, and any MCP client that supports stdio or SSE transport.
 
 > [!TIP]
-> Also supports [Namespace Isolation](#namespace-isolation-multiple-ai-personas): if you're running multiple AI personas at once (e.g., one named Alice, another named Bob), each can have its own fully independent memory space with zero interference.
+> Also supports [Namespace Isolation](#namespace-isolation): if you're running multiple AI personas at once (e.g., one named Alice, another named Bob), each can have its own fully independent memory space with zero interference.
 
 ---
 
@@ -236,11 +236,11 @@ url = "https://misaligned.top/mcp"
 ```
 
 > [!NOTE]
-> The demo is read-only — only `read_memory` and `search_memory` are enabled. For full read/write capabilities, [deploy your own instance](#-install-two-steps).
+> The demo is read-only — only `read_memory` and `search_memory` are enabled. For full read/write capabilities, [deploy your own instance](#install).
 
 ---
 
-## 🚀 Install (Two Steps)
+## <a id="install"></a>🚀 Install (Two Steps)
 
 ### Prerequisites
 
@@ -560,7 +560,7 @@ Open the **Settings** panel (top-right corner of Dashboard) to modify:
 </details>
 
 <details>
-<summary><strong>🗂️ Namespace Isolation (Multiple AI Personas)</strong></summary>
+<summary><strong><a id="namespace-isolation"></a>🗂️ Namespace Isolation (Multiple AI Personas)</strong></summary>
 
 ### Namespace Isolation
 

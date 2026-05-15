@@ -159,7 +159,7 @@ Nocturne Memory 的记忆存储在独立的 MCP Server 中，**不绑定任何 L
 **兼容所有支持 MCP 的客户端**——Claude Code / Claude Desktop / Gemini CLI / OpenAI Codex / Cursor / OpenClaw / Antigravity / GitHub Copilot，以及任何支持 stdio 或 SSE 传输的 MCP 客户端。
 
 > [!TIP]
-> 同时支持 [Namespace 隔离](#命名空间隔离同时养多个-ai-人格)：如果你同时养了多个不同的 AI 人格（比如一个叫 Alice，一个叫 Bob），每个 AI 可以拥有完全独立的记忆空间，互不干扰。
+> 同时支持 [Namespace 隔离](#namespace-isolation)：如果你同时养了多个不同的 AI 人格（比如一个叫 Alice，一个叫 Bob），每个 AI 可以拥有完全独立的记忆空间，互不干扰。
 
 ---
 
@@ -215,11 +215,11 @@ url = "https://misaligned.top/mcp"
 ```
 
 > [!NOTE]
-> Demo 为只读模式，仅开放 `read_memory` 和 `search_memory`。完整的读写能力请 [部署自己的实例](#-安装两步完成)。
+> Demo 为只读模式，仅开放 `read_memory` 和 `search_memory`。完整的读写能力请 [部署自己的实例](#install)。
 
 ---
 
-## 🚀 安装（两步完成）
+## <a id="install"></a>🚀 安装（两步完成）
 
 ### 前置要求
 
@@ -538,7 +538,7 @@ npm run dev
 </details>
 
 <details>
-<summary><strong>🗂️ 命名空间隔离（同时养多个 AI 人格）</strong></summary>
+<summary><strong><a id="namespace-isolation"></a>🗂️ 命名空间隔离（同时养多个 AI 人格）</strong></summary>
 
 ### 命名空间隔离 (Namespace Isolation)
 
