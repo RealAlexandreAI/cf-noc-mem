@@ -342,7 +342,7 @@ For the AI to **proactively** recall and record memories (instead of waiting for
 
 While the AI can manage its own memories, as the Owner, you need a god's-eye view.
 
-Automatically available when MCP starts — no extra processes needed. On first startup, the browser opens the Dashboard automatically. Screenshots at [top of page](#see-it-in-action).
+Automatically available when MCP starts — no extra processes needed. On first startup, the browser opens the Dashboard automatically. Screenshots [above](#see-it-in-action).
 
 - **Memory Explorer** — Browse the memory tree like a file explorer. Click any node to view full content, edit, or manage children.
 - **Review & Audit** — Every AI modification generates a snapshot. Visual diff comparison, one-click **Integrate** (accept) or **Reject** (rollback).

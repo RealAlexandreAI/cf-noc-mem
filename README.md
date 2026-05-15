@@ -321,7 +321,7 @@ claude mcp list
 
 虽然 AI 可以自己管理记忆，但作为 Owner，你需要上帝视角。
 
-MCP 启动后自动可用——无需额外操作。首次启动时浏览器会自动弹出。截图见 [顶部](#see-it-in-action)。
+MCP 启动后自动可用——无需额外操作。首次启动时浏览器会自动弹出。截图见 [上方](#see-it-in-action)。
 
 - **Memory Explorer** — 像文件浏览器一样浏览记忆树，点击节点查看完整内容、编辑或管理子节点。
 - **Review & Audit** — AI 每次修改记忆都会生成快照。可视化 diff 对比变更，一键 **Integrate**（接受）或 **Reject**（回滚）。
