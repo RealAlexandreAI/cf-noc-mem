@@ -23,3 +23,6 @@ backups/
 
 # Sisyphus tooling artifacts
 .sisyphus/
+
+# Draft working documents
+docs/draft/
