@@ -71,6 +71,9 @@ export const createMemory = (data) =>
 export const addAlias = (data) =>
   api.post('/browse/node/alias', data).then(res => res.data);
 
+export const renameNode = (data) =>
+  api.post('/browse/node/rename', data).then(res => res.data);
+
 // ============ Settings API ============
 
 export const getSettings = () =>

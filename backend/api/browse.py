@@ -322,6 +322,83 @@ async def create_alias(body: CreateAliasRequest):
     return {"success": True, "uri": f"{body.new_domain}://{body.new_path}"}
 
 
+class RenameRequest(BaseModel):
+    path: str
+    new_name: str
+    domain: str = "core"
+
+
+@router.post("/node/rename")
+async def rename_node(body: RenameRequest):
+    """
+    Rename a memory by changing the last segment of its URI path.
+
+    Like renaming a folder: the node and all its children are moved
+    to the new path via add_path cascade + remove_path cleanup.
+
+    Human-facing direct edit endpoint: intentionally bypasses changeset/review.
+    """
+    graph = get_graph_service()
+
+    old_path = body.path
+    old_uri = f"{body.domain}://{old_path}"
+
+    if "/" in old_path:
+        parent = old_path.rsplit("/", 1)[0]
+        new_path = f"{parent}/{body.new_name}"
+    else:
+        new_path = body.new_name
+    new_uri = f"{body.domain}://{new_path}"
+
+    if old_path == new_path:
+        return {"success": True, "old_uri": old_uri, "new_uri": new_uri, "unchanged": True}
+
+    memory = await graph.get_memory_by_path(old_path, domain=body.domain, namespace=get_namespace())
+    if not memory:
+        raise HTTPException(status_code=404, detail=f"Path not found: {old_uri}")
+
+    try:
+        result = await graph.add_path(
+            new_path=new_path,
+            target_path=old_path,
+            new_domain=body.domain,
+            target_domain=body.domain,
+            priority=memory.get("priority", 0),
+            disclosure=memory.get("disclosure"),
+            namespace=get_namespace(),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    try:
+        await graph.remove_path(old_path, body.domain, namespace=get_namespace())
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    old_prefix = old_uri + "/"
+    new_prefix = new_uri + "/"
+    ns = get_namespace()
+    boot_uris = config.get_boot_uris(ns)
+    rewritten = []
+    for u in boot_uris:
+        if u == old_uri:
+            rewritten.append(new_uri)
+        elif u.startswith(old_prefix):
+            rewritten.append(new_prefix + u[len(old_prefix):])
+        else:
+            rewritten.append(u)
+    if rewritten != boot_uris:
+        config.set_boot_uris(rewritten, ns)
+
+    return {
+        "success": True,
+        "old_uri": old_uri,
+        "new_uri": new_uri,
+        "old_path": old_path,
+        "new_path": new_path,
+    }
+
+
 # =============================================================================
 # Glossary Endpoints
 # =============================================================================

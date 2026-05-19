@@ -8,7 +8,6 @@ import {
   Cpu, 
   Hash, 
   AlertTriangle,
-  Link2,
   Star,
   Zap,
   Trash2,
@@ -18,8 +17,10 @@ import {
   Plus,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { api, getSettingsBootUris, toggleSettingsBootUri, deleteNode, searchMemories, createMemory, addAlias } from '../../lib/api';
+import { api, getSettingsBootUris, toggleSettingsBootUri, deleteNode, searchMemories, createMemory } from '../../lib/api';
+import { renameNode } from '../../lib/api';
 import CreateMemoryModal from './components/CreateMemoryModal';
+import AliasManager from './components/AliasManager';
 import PriorityBadge from './components/PriorityBadge';
 import GlossaryHighlighter from './components/GlossaryHighlighter';
 import KeywordManager from './components/KeywordManager';
@@ -38,6 +39,7 @@ export default function MemoryBrowser() {
   const [domains, setDomains] = useState([]);
   
   const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [editDisclosure, setEditDisclosure] = useState('');
   const [editPriority, setEditPriority] = useState(0);
@@ -50,14 +52,6 @@ export default function MemoryBrowser() {
 
   // Create Memory
   const [showCreateModal, setShowCreateModal] = useState(false);
-
-  // Add Alias
-  const [showAliasInput, setShowAliasInput] = useState(false);
-  const [aliasPath, setAliasPath] = useState('');
-  const [aliasDisclosure, setAliasDisclosure] = useState('');
-  const [aliasPriority, setAliasPriority] = useState(0);
-  const [aliasSaving, setAliasSaving] = useState(false);
-  const [aliasError, setAliasError] = useState('');
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -87,6 +81,7 @@ export default function MemoryBrowser() {
         setEditContent(res.data.node?.content || '');
         setEditDisclosure(res.data.node?.disclosure || '');
         setEditPriority(res.data.node?.priority ?? 0);
+        setEditTitle(res.data.node?.name || '');
       } catch (err) {
         setError(err.response?.data?.detail || err.message);
       } finally {
@@ -116,6 +111,7 @@ export default function MemoryBrowser() {
   };
 
   const startEditing = () => {
+    setEditTitle(data.node?.name || '');
     setEditContent(data.node?.content || '');
     setEditDisclosure(data.node?.disclosure || '');
     setEditPriority(data.node?.priority ?? 0);
@@ -124,6 +120,7 @@ export default function MemoryBrowser() {
 
   const cancelEditing = () => {
     setEditing(false);
+    setEditTitle(data.node?.name || '');
     setEditContent(data.node?.content || '');
     setEditDisclosure(data.node?.disclosure || '');
     setEditPriority(data.node?.priority ?? 0);
@@ -132,19 +129,34 @@ export default function MemoryBrowser() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const titleChanged = editTitle !== (data.node?.name || '');
       const payload = {};
       if (editContent !== (data.node?.content || '')) payload.content = editContent;
       if (editPriority !== (data.node?.priority ?? 0)) payload.priority = editPriority;
       if (editDisclosure !== (data.node?.disclosure || '')) payload.disclosure = editDisclosure;
-      
-      if (Object.keys(payload).length === 0) {
+
+      if (titleChanged) {
+        const renameResult = await renameNode({
+          path,
+          new_name: editTitle.trim(),
+          domain,
+        });
+        if (Object.keys(payload).length > 0) {
+          await api.put('/browse/node', payload, {
+            params: { domain, path: renameResult.new_path },
+          });
+        }
+        navigateTo(renameResult.new_path, domain);
+      } else {
+        if (Object.keys(payload).length === 0) {
+          setEditing(false);
+          setSaving(false);
+          return;
+        }
+        await api.put('/browse/node', payload, { params: { domain, path } });
+        await refreshData();
         setEditing(false);
-        return;
       }
-      
-      await api.put('/browse/node', payload, { params: { domain, path } });
-      await refreshData();
-      setEditing(false);
     } catch (err) {
       alert('Save failed: ' + err.message);
     } finally {
@@ -174,30 +186,6 @@ export default function MemoryBrowser() {
       alert('Delete failed: ' + (err.response?.data?.detail || err.message));
     } finally {
       setDeleting(false);
-    }
-  };
-
-  const handleAddAlias = async () => {
-    setAliasSaving(true);
-    setAliasError('');
-    try {
-      await addAlias({
-        new_path: aliasPath.trim(),
-        target_path: path,
-        disclosure: aliasDisclosure.trim(),
-        new_domain: domain,
-        target_domain: domain,
-        priority: aliasPriority,
-      });
-      setShowAliasInput(false);
-      setAliasPath('');
-      setAliasDisclosure('');
-      setAliasPriority(0);
-      await refreshData();
-    } catch (err) {
-      setAliasError(err.response?.data?.detail || err.message);
-    } finally {
-      setAliasSaving(false);
     }
   };
 
@@ -379,9 +367,19 @@ export default function MemoryBrowser() {
                             <div className="flex items-start justify-between gap-4">
                                 <div className="space-y-3 min-w-0 flex-1">
                                     <div className="flex items-center gap-3 flex-wrap">
-                                        <h1 className="text-2xl font-bold text-slate-100 tracking-tight">
+                                        {editing ? (
+                                          <input
+                                            type="text"
+                                            value={editTitle}
+                                            onChange={e => setEditTitle(e.target.value)}
+                                            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-2xl font-bold text-slate-100 tracking-tight w-64 focus:outline-none focus:border-indigo-500/50 transition-colors font-mono"
+                                            spellCheck={false}
+                                          />
+                                        ) : (
+                                          <h1 className="text-2xl font-bold text-slate-100 tracking-tight">
                                             {node.name || path.split('/').pop()}
-                                        </h1>
+                                          </h1>
+                                        )}
                                         <PriorityBadge priority={node.priority} size="lg" />
                                     </div>
                                     
@@ -393,79 +391,20 @@ export default function MemoryBrowser() {
                                         </div>
                                     )}
                                     
-                                    {node.aliases && node.aliases.length > 0 && !editing && (
-                                        <div className="flex items-start gap-2 text-xs text-slate-500">
-                                            <Link2 size={13} className="flex-shrink-0 mt-0.5 text-slate-600" />
-                                            <div className="flex flex-wrap gap-1.5">
-                                                <span className="text-slate-600 font-medium">Also reachable via:</span>
-                                                {node.aliases.map(alias => (
-                                                    <code key={alias} className="px-1.5 py-0.5 bg-slate-800/60 rounded text-indigo-400/70 font-mono text-[11px]">
-                                                        {alias}
-                                                    </code>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
                                     {!editing && !node.is_virtual && (
-                                        <div>
-                                            <button
-                                                onClick={() => setShowAliasInput(!showAliasInput)}
-                                                className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-indigo-400 transition-colors mt-1"
-                                            >
-                                                <Plus size={12} />
-                                                Add alias
-                                            </button>
-                                            {showAliasInput && (
-                                                <div className="flex flex-wrap items-center gap-2 mt-2 p-3 bg-slate-900/50 border border-slate-800/50 rounded-lg">
-                                                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                                                        <span className="text-xs text-slate-500">{domain}://</span>
-                                                        <input
-                                                            type="text"
-                                                            value={aliasPath}
-                                                            onChange={e => setAliasPath(e.target.value)}
-                                                            placeholder="new/path/here"
-                                                            className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono focus:outline-none focus:border-indigo-500/50"
-                                                        />
-                                                    </div>
-                                                    <input
-                                                        type="text"
-                                                        value={aliasDisclosure}
-                                                        onChange={e => setAliasDisclosure(e.target.value)}
-                                                        placeholder="disclosure..."
-                                                        className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 w-40 focus:outline-none focus:border-indigo-500/50"
-                                                    />
-                                                    <input
-                                                        type="number" min="0"
-                                                        value={aliasPriority}
-                                                        onChange={e => setAliasPriority(parseInt(e.target.value) || 0)}
-                                                        className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 w-16 font-mono focus:outline-none focus:border-indigo-500/50"
-                                                        title="priority"
-                                                    />
-                                                    <button
-                                                        onClick={handleAddAlias}
-                                                        disabled={aliasSaving || !aliasPath.trim() || !aliasDisclosure.trim()}
-                                                        className="px-3 py-1 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded transition-colors disabled:opacity-50"
-                                                    >
-                                                        {aliasSaving ? '...' : 'Save'}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => { setShowAliasInput(false); setAliasError(''); }}
-                                                        className="p-1 hover:bg-slate-800 rounded text-slate-500"
-                                                    >
-                                                        <X size={14} />
-                                                    </button>
-                                                    {aliasError && <span className="text-xs text-rose-400 w-full">{aliasError}</span>}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {!editing && !node.is_virtual && (
-                                        <KeywordManager
-                                          keywords={node.glossary_keywords || []}
-                                          nodeUuid={node.node_uuid}
-                                          onUpdate={refreshData}
-                                        />
+                                        <>
+                                          <AliasManager
+                                            aliases={node.aliases || []}
+                                            currentDomain={domain}
+                                            currentPath={path}
+                                            onUpdate={refreshData}
+                                          />
+                                          <KeywordManager
+                                            keywords={node.glossary_keywords || []}
+                                            nodeUuid={node.node_uuid}
+                                            onUpdate={refreshData}
+                                          />
+                                        </>
                                     )}
                                 </div>
                                 
