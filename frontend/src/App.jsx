@@ -10,6 +10,21 @@ import SettingsDrawer from './features/settings/SettingsDrawer';
 import TokenAuth from './components/TokenAuth';
 import { AUTH_ERROR_EVENT, getNamespaces } from './lib/api';
 
+const NAMESPACE_SWITCH_ROOT_REDIRECT_KEY = 'nocturne:namespace-switch-root-redirect';
+
+const consumeTokenFromUrl = () => {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token');
+  if (!token) return false;
+
+  localStorage.setItem('api_token', token);
+  params.delete('token');
+  const query = params.toString();
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+  window.history.replaceState({}, '', nextUrl);
+  return true;
+};
+
 // ---------------------------------------------------------------------------
 // NamespaceSelector — lets the user switch between agent namespaces.
 //
@@ -39,12 +54,19 @@ function NamespaceSelector() {
 
   const applyNamespace = (ns) => {
     const trimmed = ns.trim();
+    const changed = trimmed !== selected;
     setSelected(trimmed);
     setInputValue(trimmed);
     if (trimmed) {
       localStorage.setItem('selected_namespace', trimmed);
     } else {
       localStorage.removeItem('selected_namespace');
+    }
+    if (changed) {
+      sessionStorage.setItem(
+        NAMESPACE_SWITCH_ROOT_REDIRECT_KEY,
+        JSON.stringify({ from: selected, to: trimmed, at: Date.now() })
+      );
     }
     window.location.reload();
   };
@@ -180,7 +202,7 @@ function Layout() {
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return !!localStorage.getItem('api_token');
+    return consumeTokenFromUrl() || !!localStorage.getItem('api_token');
   });
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [backendError, setBackendError] = useState(false);

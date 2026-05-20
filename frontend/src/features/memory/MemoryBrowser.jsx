@@ -28,6 +28,28 @@ import DomainNode from './components/MemorySidebar';
 import Breadcrumb from './components/Breadcrumb';
 import NodeGridCard from './components/NodeGridCard';
 
+const NAMESPACE_SWITCH_ROOT_REDIRECT_KEY = 'nocturne:namespace-switch-root-redirect';
+const NAMESPACE_SWITCH_REDIRECT_TTL_MS = 30_000;
+
+const consumeNamespaceSwitchRedirect = () => {
+  const raw = sessionStorage.getItem(NAMESPACE_SWITCH_ROOT_REDIRECT_KEY);
+  if (!raw) return false;
+
+  sessionStorage.removeItem(NAMESPACE_SWITCH_ROOT_REDIRECT_KEY);
+
+  try {
+    const payload = JSON.parse(raw);
+    return Date.now() - Number(payload?.at) < NAMESPACE_SWITCH_REDIRECT_TTL_MS;
+  } catch {
+    return false;
+  }
+};
+
+const chooseRootDomain = (domains, currentDomain) => {
+  if (domains.some(item => item.domain === currentDomain)) return currentDomain;
+  return domains[0]?.domain || null;
+};
+
 export default function MemoryBrowser() {
   const [searchParams, setSearchParams] = useSearchParams();
   const domain = searchParams.get('domain') || 'core';
@@ -76,6 +98,17 @@ export default function MemoryBrowser() {
       setError(null);
       setEditing(false);
       try {
+        const shouldRedirectAfterNamespaceSwitch = consumeNamespaceSwitchRedirect();
+        if (shouldRedirectAfterNamespaceSwitch) {
+          const domainsRes = await api.get('/browse/domains');
+          const rootDomain = chooseRootDomain(domainsRes.data, domain);
+          setDomains(domainsRes.data);
+          if (rootDomain && (path || rootDomain !== domain)) {
+            setSearchParams({ domain: rootDomain }, { replace: true });
+            return;
+          }
+        }
+
         const res = await api.get('/browse/node', { params: { domain, path } });
         setData(res.data);
         setEditContent(res.data.node?.content || '');
