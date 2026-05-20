@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Loader2 } from 'lucide-react';
 import { createMemory } from '../../../lib/api';
 
-export default function CreateMemoryModal({ isOpen, onClose, onCreated, parentPath, currentDomain }) {
+export default function CreateMemoryModal({ onClose, onCreated, parentPath, currentDomain }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [priority, setPriority] = useState(0);
@@ -53,8 +53,6 @@ export default function CreateMemoryModal({ isOpen, onClose, onCreated, parentPa
     setError('');
     onClose();
   };
-
-  if (!isOpen) return null;
 
   return (
     <div

@@ -590,7 +590,6 @@ export default function MemoryBrowser() {
       {/* Create Memory Modal */}
       {showCreateModal && (
         <CreateMemoryModal
-          isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
           onCreated={handleCreateMemory}
           parentPath={path}

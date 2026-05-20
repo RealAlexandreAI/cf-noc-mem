@@ -24,13 +24,3 @@ backups/
 
 # Sisyphus tooling artifacts
 .sisyphus/
-
-# Draft working documents
-docs/draft/
-
-# Local dev service manager
-dev-services.sh
-.dev-services/
-
-# OpenCode
-.opencode/
