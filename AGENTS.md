@@ -36,7 +36,7 @@ nocturne_memory_dev/
 │   │   ├── lib/api.js        # API 客户端 (axios + 拦截器)
 │   │   ├── components/       # 共享组件 (DiffViewer, TokenAuth, SnapshotList)
 │   │   └── features/         # 功能模块 (memory/review/maintenance/settings)
-│   ├── vite.config.js        # Vite 配置 (代理端口 8233)
+│   ├── vite.config.js        # Vite 配置 (开发代理端口 8234)
 │   ├── nginx.conf            # 生产 Nginx 配置
 │   └── Dockerfile            # 多阶段构建 (node → nginx)
 ├── docs/                     # 文档 (skills/, images/, testing.md)
@@ -105,7 +105,7 @@ CORSMiddleware → NamespaceMiddleware → BearerTokenAuthMiddleware → App
 - **纯 JSX，无 TypeScript**。无 `.ts`/`.tsx` 文件。`tsconfig.json` 不存在。
 - **无 ESLint/Prettier**。无前端测试框架。
 - **状态管理**：纯 React useState/useEffect，无 Redux。跨组件通信用 `CustomEvent`。
-- **Vite 代理配置**：开发时 `/api` 代理到 `127.0.0.1:8233`，并 `rewrite` 剥除 `/api` 前缀。生产通过 Nginx 反向代理。
+- **Vite 代理配置**：开发时 `/api` 代理到 `127.0.0.1:8234`，并 `rewrite` 剥除 `/api` 前缀。生产通过 Nginx 反向代理。
 - **认证流**：token 存 localStorage → axios 拦截器附加 → 401 时清除 token + 分发 `AUTH_ERROR_EVENT` → App.jsx 显示 TokenAuth。
 
 ### 测试
@@ -136,13 +136,18 @@ CORSMiddleware → NamespaceMiddleware → BearerTokenAuthMiddleware → App
 
 ```bash
 # === 本地开发 ===
-# 后端热重载
-cd backend && uvicorn main:app --reload --port 8233
+# 端口约定：8233 留给本机生产/SSE 实例，开发后端固定用 8234，避免撞端口。
+# 推荐：根目录本地脚本会启动前后端，并打印 API Token 与带 token 的 Dashboard 链接。
+./dev-services.sh start
 
-# 前端热重载 (另一终端，端口 3000，代理 API 到 8233)
+# 手动启动后端热重载（开发端口 8234）
+cd backend && uvicorn main:app --reload --port 8234
+
+# 前端热重载 (另一终端，端口 3000，代理 API 到 8234)
 cd frontend && npm run dev
 
 # 或一键启动 (MCP + REST API + Dashboard 全在一个进程)
+# 注意：这是生产/SSE 路径，默认读取 config.json 的 web_port；本机常驻实例通常占用 8233。
 python backend/run_sse.py
 
 # === 测试 ===
