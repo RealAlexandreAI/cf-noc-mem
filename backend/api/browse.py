@@ -13,7 +13,6 @@ from db import get_graph_service, get_glossary_service, get_db_manager, get_sear
 from db.models import Path as PathModel, Edge as EdgeModel, ROOT_NODE_UUID
 from db.namespace import get_namespace
 from locales import t
-from locales.middleware import get_request_locale
 from sqlalchemy import select, distinct
 import re
 
@@ -272,10 +271,7 @@ async def update_node(
             namespace=get_namespace(),
         )
     except ValueError as e:
-        locale = get_request_locale()
-        if locale == "en":
-            raise HTTPException(status_code=422, detail=str(e))
-        raise HTTPException(status_code=422, detail=t("api.browse.graph_error", locale=locale))
+        raise HTTPException(status_code=422, detail=str(e))
     
     return {"success": True, "memory_id": result["new_memory_id"]}
 
@@ -306,10 +302,7 @@ async def create_node(body: CreateMemoryRequest):
             namespace=get_namespace(),
         )
     except ValueError as e:
-        locale = get_request_locale()
-        if locale == "en":
-            raise HTTPException(status_code=422, detail=str(e))
-        raise HTTPException(status_code=422, detail=t("api.browse.graph_error", locale=locale))
+        raise HTTPException(status_code=422, detail=str(e))
 
     return {"success": True, "uri": result["uri"], "memory_id": result["id"]}
 
@@ -337,10 +330,7 @@ async def create_alias(body: CreateAliasRequest):
             namespace=get_namespace(),
         )
     except ValueError as e:
-        locale = get_request_locale()
-        if locale == "en":
-            raise HTTPException(status_code=422, detail=str(e))
-        raise HTTPException(status_code=422, detail=t("api.browse.graph_error", locale=locale))
+        raise HTTPException(status_code=422, detail=str(e))
 
     return {"success": True, "uri": f"{body.new_domain}://{body.new_path}"}
 
@@ -397,10 +387,7 @@ async def rename_node(body: RenameRequest):
             namespace=get_namespace(),
         )
     except ValueError as e:
-        locale = get_request_locale()
-        if locale == "en":
-            raise HTTPException(status_code=422, detail=str(e))
-        raise HTTPException(status_code=422, detail=t("api.browse.graph_error", locale=locale))
+        raise HTTPException(status_code=422, detail=str(e))
 
     # Remove old path. If this fails, roll back the new path to avoid
     # leaving the node in a silent dual-path state the user won't notice.
@@ -464,10 +451,7 @@ async def add_glossary_keyword(body: GlossaryAdd):
         result = await glossary.add_glossary_keyword(body.keyword, body.node_uuid, namespace=get_namespace())
         return {"success": True, **result}
     except ValueError as e:
-        locale = get_request_locale()
-        if locale == "en":
-            raise HTTPException(status_code=422, detail=str(e))
-        raise HTTPException(status_code=422, detail=t("api.browse.glossary_error", locale=locale))
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.delete("/glossary")
@@ -507,10 +491,7 @@ async def delete_node(
     try:
         await graph.remove_path(path, domain, namespace=get_namespace())
     except ValueError as e:
-        locale = get_request_locale()
-        if locale == "en":
-            raise HTTPException(status_code=422, detail=str(e))
-        raise HTTPException(status_code=422, detail=t("api.browse.graph_error", locale=locale))
+        raise HTTPException(status_code=422, detail=str(e))
 
     deleted_uri = f"{domain}://{path}"
     subtree_prefix = deleted_uri + "/"

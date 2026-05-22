@@ -6,9 +6,7 @@
       "invalid_title": "Title can only contain letters, numbers, hyphens, and underscores",
       "invalid_name": "new_name must contain only alphanumeric characters, hyphens, and underscores",
       "rename_partial_failure": "Rename partially failed: old path removal error ({error}). New path rolled back.",
-      "keyword_not_found": "Keyword binding not found",
-      "graph_error": "Graph operation failed",
-      "glossary_error": "Glossary operation failed"
+      "keyword_not_found": "Keyword binding not found"
     },
     "review": {
       "no_changes_for_node": "No changes for node '{node_uuid}'",
@@ -19,8 +17,7 @@
       "rollback_failed": "Rollback failed: {error}",
       "changeset_not_found": "Changeset not found",
       "no_changes": "No changes to integrate",
-      "cannot_restore_memory": "Cannot restore previous memory content from snapshot target {memory_id}: {error}",
-      "graph_error": "Graph operation failed"
+      "cannot_restore_memory": "Cannot restore previous memory content from snapshot target {memory_id}: {error}"
     },
     "settings": {
       "docker_locked_fields": "Cannot change {fields} in Docker — these are managed by docker-compose.yml and nginx.conf.",
@@ -45,8 +42,7 @@
     },
     "maintenance": {
       "memory_not_found": "Memory {memory_id} not found",
-      "no_orphans": "No orphaned memories found",
-      "graph_error": "Graph operation failed"
+      "no_orphans": "No orphaned memories found"
     },
     "utils": {
       "diff": {

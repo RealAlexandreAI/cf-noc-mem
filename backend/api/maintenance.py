@@ -3,7 +3,6 @@ from db import get_graph_service
 from db.models import MemoryAccessLog
 from db.namespace import get_namespace
 from locales import t
-from locales.middleware import get_request_locale
 from sqlalchemy import select, func, delete
 from datetime import datetime, timedelta
 from pydantic import BaseModel
@@ -53,10 +52,7 @@ async def delete_orphan(memory_id: int):
         result = await graph.permanently_delete_memory(memory_id)
         return result
     except ValueError as e:
-        locale = get_request_locale()
-        if locale == "en":
-            raise HTTPException(status_code=404, detail=str(e))
-        raise HTTPException(status_code=404, detail=t("api.maintenance.graph_error", locale=locale))
+        raise HTTPException(status_code=404, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=409, detail=str(e))
 

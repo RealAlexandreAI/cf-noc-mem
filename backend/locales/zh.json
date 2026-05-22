@@ -7,9 +7,7 @@
       "invalid_title": "标题只能包含字母、数字、连字符和下划线",
       "invalid_name": "new_name 只能包含字母数字字符、连字符和下划线",
       "rename_partial_failure": "重命名部分失败: 旧路径删除错误 ({error})。新路径已回滚。",
-      "keyword_not_found": "关键词绑定未找到",
-      "graph_error": "图操作失败",
-      "glossary_error": "词汇表操作失败"
+      "keyword_not_found": "关键词绑定未找到"
     },
     "review": {
       "no_changes_for_node": "节点 '{node_uuid}' 没有变更",
@@ -20,8 +18,7 @@
       "rollback_failed": "回滚失败: {error}",
       "changeset_not_found": "变更集未找到",
       "no_changes": "没有可集成的变更",
-      "cannot_restore_memory": "无法从快照目标 {memory_id} 恢复之前的记忆内容: {error}",
-      "graph_error": "图操作失败"
+      "cannot_restore_memory": "无法从快照目标 {memory_id} 恢复之前的记忆内容: {error}"
     },
     "settings": {
       "docker_locked_fields": "无法在 Docker 中修改 {fields} — 这些由 docker-compose.yml 和 nginx.conf 管理。",
@@ -46,8 +43,7 @@
     },
     "maintenance": {
       "memory_not_found": "记忆 {memory_id} 未找到",
-      "no_orphans": "没有孤儿记忆",
-      "graph_error": "图操作失败"
+      "no_orphans": "没有孤儿记忆"
     },
     "utils": {
       "diff": {

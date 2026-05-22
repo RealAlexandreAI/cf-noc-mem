@@ -11,7 +11,6 @@ from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Any, Optional
 
 from locales import t
-from locales.middleware import get_request_locale
 from models import (
     DiffRequest, DiffResponse,
     ChangeGroup, UriDiff,
@@ -836,10 +835,7 @@ async def permanently_delete_memory(memory_id: int):
         await graph.permanently_delete_memory(memory_id)
         return {"message": t("api.review.memory_deleted").format(memory_id=memory_id)}
     except ValueError as e:
-        locale = get_request_locale()
-        if locale == "en":
-            raise HTTPException(404, str(e))
-        raise HTTPException(404, t("api.review.graph_error", locale=locale))
+        raise HTTPException(404, str(e))
 
 
 @router.post("/diff", response_model=DiffResponse)
