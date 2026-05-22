@@ -79,9 +79,11 @@ export function ToastContainer() {
 
       setToasts(prev => [...prev, toast]);
 
-      timersRef.current[id] = setTimeout(() => {
-        dismiss(id);
-      }, 5000);
+      if (type !== 'error') {
+        timersRef.current[id] = setTimeout(() => {
+          dismiss(id);
+        }, 5000);
+      }
     };
 
     window.addEventListener(TOAST_EVENT, handler);

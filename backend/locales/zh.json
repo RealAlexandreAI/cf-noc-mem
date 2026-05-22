@@ -51,7 +51,7 @@
         "removed_all": "删除所有内容，原有{chars}字符",
         "minor": "微小变化：新增{additions}字符，删除{deletions}字符",
         "moderate": "中等变化：新增{additions}字符，删除{deletions}字符",
-        "major": "大幅变化：新增{additions}字符，删除{deletions}字符，变化率{change_ratio:.1f}%"
+        "major": "大幅变化：新增{additions}字符，删除{deletions}字符，变化率{change_ratio}%"
       }
     }
   },

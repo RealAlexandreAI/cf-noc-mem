@@ -75,4 +75,4 @@ def _generate_diff_summary(diffs, text_a: str, text_b: str) -> str:
     elif change_ratio < 20:
         return t("api.utils.diff.moderate").format(additions=additions, deletions=deletions)
     else:
-        return t("api.utils.diff.major").format(additions=additions, deletions=deletions, change_ratio=change_ratio)
+        return t("api.utils.diff.major").format(additions=additions, deletions=deletions, change_ratio=f"{change_ratio:.1f}")

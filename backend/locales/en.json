@@ -50,7 +50,7 @@
         "removed_all": "All content removed, was {chars} chars",
         "minor": "Minor change: +{additions} / -{deletions} chars",
         "moderate": "Moderate change: +{additions} / -{deletions} chars",
-        "major": "Major change: +{additions} / -{deletions} chars, {change_ratio:.1f}% change"
+        "major": "Major change: +{additions} / -{deletions} chars, {change_ratio}% change"
       }
     }
   },
@@ -143,9 +143,7 @@
     "build_failed": "[Nocturne] '{cmd}' failed (exit {exit_code}):\n{error_msg}",
     "build_error": "[Nocturne] Auto-build failed: {error}\n  Build manually: cd frontend && npm install && npm run build",
     "admin_ready": "[Nocturne] Admin UI ready.",
-    "port_in_use": "\n[Nocturne] Notice: Admin UI skipped (Port {port} in use).",
-    "port_in_use_expected": "[Nocturne] This is expected if another MCP instance is already providing the UI.",
-    "port_in_use_mcp_ok": "[Nocturne] The MCP server itself will continue to operate normally.",
+    "port_in_use": "\n[Nocturne] Notice: Admin UI skipped (Port {port} in use).\n[Nocturne] This is expected if another MCP instance is already providing the UI.\n[Nocturne] The MCP server itself will continue to operate normally.",
     "admin_ui_label": "Admin UI:  {url}",
     "rest_api_label": "REST API:  {url}"
   },

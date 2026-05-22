@@ -278,12 +278,8 @@ async def lifespan(server: FastMCP):
                     # Ignore the raw error message (usually OSError for address in use)
                     # and print a user-friendly explanation.
                     print(t("startup.port_in_use").format(port=port), file=sys.stderr)
-                    print(t("startup.port_in_use_expected"), file=sys.stderr)
-                    print(t("startup.port_in_use_mcp_ok"), file=sys.stderr)
                 except SystemExit:
                     print(t("startup.port_in_use").format(port=port), file=sys.stderr)
-                    print(t("startup.port_in_use_expected"), file=sys.stderr)
-                    print(t("startup.port_in_use_mcp_ok"), file=sys.stderr)
 
             web_task = asyncio.create_task(_serve_ui())
             ui = f"http://localhost:{port}/"
