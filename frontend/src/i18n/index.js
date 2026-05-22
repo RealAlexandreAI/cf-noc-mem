@@ -16,6 +16,10 @@ i18n.use(initReactI18next).init({
   },
 })
 
+i18n.on('languageChanged', (lng) => {
+  api.defaults.headers.common['Accept-Language'] = lng
+})
+
 const SUPPORTED = ['en', 'zh']
 
 function detectBrowserLocale() {
