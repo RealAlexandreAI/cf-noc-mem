@@ -16,16 +16,27 @@ i18n.use(initReactI18next).init({
   },
 })
 
+const SUPPORTED = ['en', 'zh']
+
+function detectBrowserLocale() {
+  const primary = navigator.language?.split('-')[0]?.toLowerCase()
+  return SUPPORTED.includes(primary) ? primary : 'en'
+}
+
 export async function detectLocale() {
   try {
     const res = await api.get('/settings')
-    const locale = res.data.settings?.locale || 'en'
-    await i18n.changeLanguage(locale)
-    return locale
-  } catch {
-    await i18n.changeLanguage('en')
-    return 'en'
-  }
+    const locale = res.data.settings?.locale
+    if (locale) {
+      await i18n.changeLanguage(locale)
+      return locale
+    }
+  } catch {}
+
+  // config has no locale set — detect from browser
+  const detected = detectBrowserLocale()
+  await i18n.changeLanguage(detected)
+  return detected
 }
 
 export default i18n

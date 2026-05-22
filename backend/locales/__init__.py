@@ -59,14 +59,6 @@ def _deep_get(d: dict, key: str) -> Optional[str]:
     return current if isinstance(current, str) else None
 
 
-def _resolve_config_locale() -> str:
-    """Lazily resolve config.get_locale() to avoid circular import."""
-    import importlib as _importlib
-    _config_module = _importlib.import_module("config")
-    _get_locale = getattr(_config_module, "get_locale")
-    return _get_locale() or "en"
-
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -91,9 +83,15 @@ def t(key: str, locale: Optional[str] = None) -> str:
     if resolved is None:
         try:
             from locales.middleware import get_request_locale  # noqa: PLC0415
-            resolved = get_request_locale()
+            resolved = get_request_locale()  # None when outside HTTP request
         except Exception:
-            resolved = _resolve_config_locale()
+            pass
+        if resolved is None:
+            # Outside HTTP (MCP/stdio): always English.
+            # MCP output is consumed by AI models — English is more
+            # reliable as system-message language and avoids forcing
+            # maintainers to keep translations in sync for machine-facing text.
+            resolved = "en"
 
     # English: check en.json first so that human-readable messages are
     # returned instead of raw dot-separated keys.

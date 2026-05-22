@@ -46,20 +46,6 @@
   },
 
   "settings": {
-    "drawer": {
-      "tab_general": "General",
-      "tab_database": "Database",
-      "tab_memory": "Memory",
-      "title": "Settings",
-      "subtitle": "Manage your Nocturne Memory instance configuration.",
-      "loading": "Loading settings...",
-      "section_server": "Server Configuration",
-      "section_locale": "Language / Locale",
-      "section_advanced": "Developer Mode / Advanced",
-      "section_database": "Database Connection",
-      "section_boot_uris": "Boot URIs",
-      "section_domains": "Memory Domains"
-    },
     "server": {
       "port_label": "Port",
       "docker_managed": "Managed by docker-compose.yml — not editable in Docker environment.",
@@ -152,6 +138,7 @@
     },
     "locale": {
       "label": "Language / Locale",
+      "auto_option": "Auto / Browser Default",
       "en_option": "English (en)",
       "zh_option": "中文 (zh)",
       "restart_warning": "Server restart required to apply changes.",

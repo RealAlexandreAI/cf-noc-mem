@@ -13,16 +13,19 @@ to use config directly.
 import contextvars
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-_locale_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "locale", default="en"
+_UNSET = object()
+
+_locale_ctx: contextvars.ContextVar = contextvars.ContextVar(
+    "locale", default=_UNSET
 )
 
 KNOWN_LOCALES = frozenset({"en", "zh"})
 
 
-def get_request_locale() -> str:
-    """Return the locale detected for the current request (or ``"en"``)."""
-    return _locale_ctx.get()
+def get_request_locale() -> str | None:
+    """Return the locale set by LocaleMiddleware, or ``None`` outside HTTP."""
+    val = _locale_ctx.get()
+    return None if val is _UNSET else val
 
 
 class LocaleMiddleware:

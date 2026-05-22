@@ -5,18 +5,20 @@ import { toast } from '../../components/Toast';
 
 export default function LocaleSection({ settings, onSave }) {
   const { t } = useTranslation();
-  const [locale, setLocale] = useState('en');
+  const [locale, setLocale] = useState('auto');
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (settings?.locale != null) setLocale(settings.locale);
+    if (settings?.locale !== undefined) {
+      setLocale(settings.locale === null ? 'auto' : settings.locale);
+    }
   }, [settings?.locale]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onSave({ locale });
+      await onSave({ locale: locale === 'auto' ? null : locale });
       setDirty(false);
     } catch (e) {
       toast(t('settings.locale.save_failed') + ': ' + (e.response?.data?.detail || e.message), "error");
@@ -34,6 +36,7 @@ export default function LocaleSection({ settings, onSave }) {
           onChange={e => { setLocale(e.target.value); setDirty(true); }}
           className="bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-inner"
         >
+          <option value="auto">{t('settings.locale.auto_option')}</option>
           <option value="en">{t('settings.locale.en_option')}</option>
           <option value="zh">{t('settings.locale.zh_option')}</option>
         </select>

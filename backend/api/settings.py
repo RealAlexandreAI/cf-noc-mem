@@ -71,7 +71,11 @@ async def update_settings(body: SettingsUpdate):
     updated = []
     needs_restart = False
 
-    fields = body.model_dump(exclude_none=True)
+    fields = body.model_dump(exclude_unset=True)
+    
+    # Only locale is allowed to be explicitly set to None (to clear it).
+    # For all other fields, if they are None, we drop them to preserve partial-update semantics.
+    fields = {k: v for k, v in fields.items() if v is not None or k == "locale"}
 
     _DOCKER_LOCKED = {"web_port", "host"}
     if _IN_DOCKER:

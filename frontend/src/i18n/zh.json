@@ -42,20 +42,6 @@
     "footer": "Nocturne Memory"
   },
   "settings": {
-    "drawer": {
-      "tab_general": "常规",
-      "tab_database": "数据库",
-      "tab_memory": "记忆",
-      "title": "设置",
-      "subtitle": "管理你的 Nocturne Memory 实例配置。",
-      "loading": "正在加载设置...",
-      "section_server": "服务器配置",
-      "section_locale": "语言 / 地区",
-      "section_advanced": "开发者模式 / 高级",
-      "section_database": "数据库连接",
-      "section_boot_uris": "启动 URI",
-      "section_domains": "记忆域名"
-    },
     "server": {
       "port_label": "端口号",
       "docker_managed": "由 docker-compose.yml 管理 — Docker 环境下不可编辑。",
@@ -148,6 +134,7 @@
     },
     "locale": {
       "label": "语言 / 地区",
+      "auto_option": "自动检测 (跟随浏览器)",
       "en_option": "English (en)",
       "zh_option": "中文 (zh)",
       "restart_warning": "需要重启服务器才能生效。",

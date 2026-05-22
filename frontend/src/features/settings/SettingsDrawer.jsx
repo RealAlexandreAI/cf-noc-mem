@@ -3,7 +3,7 @@ import {
   Database, Server, List, Tag, Settings, X, RefreshCw, Globe
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import i18n from '../../i18n';
+import i18n, { detectLocale } from '../../i18n';
 import { getSettings, updateSettings, getDatabaseStatus } from '../../lib/api';
 
 import Section from './Section';
@@ -56,11 +56,15 @@ export default function SettingsDrawer() {
 
   const handleSave = async (updates) => {
     const result = await updateSettings(updates);
-    if (updates.locale) {
+    if (Object.prototype.hasOwnProperty.call(updates, 'locale')) {
       // Locale change: no DB/server settings to refresh; skip loadAll()
       // to avoid destroying LocaleSection's local dropdown state.
       // Manually update the locale in settings so other tabs stay in sync.
-      await i18n.changeLanguage(updates.locale);
+      if (updates.locale === null) {
+        await detectLocale();
+      } else {
+        await i18n.changeLanguage(updates.locale);
+      }
       setSettings(prev => prev ? { ...prev, locale: updates.locale } : prev);
     } else {
       await loadAll();

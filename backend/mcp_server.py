@@ -170,9 +170,7 @@ def build_web_app(*, extra_routes=None, extra_prefixes=None, lifespan=None):
 
 
 async def _ensure_frontend_built():
-    """Auto-build the frontend dashboard on first run if dist/ is missing."""
-    if FRONTEND_DIR.is_dir():
-        return
+    """Auto-build the frontend dashboard on first run or when code updates."""
     if not (FRONTEND_SRC / "package.json").is_file():
         return
     if os.environ.get("SKIP_FRONTEND_BUILD", "").lower() in ("true", "1", "yes"):
@@ -181,14 +179,37 @@ async def _ensure_frontend_built():
         print(t("startup.npm_not_found"), file=sys.stderr)
         return
 
+    # Check version from package.json to detect frontend updates
+    current_version = "unknown"
+    try:
+        package_json_path = FRONTEND_SRC / "package.json"
+        if package_json_path.is_file():
+            import json
+            content = package_json_path.read_text(encoding="utf-8")
+            pkg_data = json.loads(content)
+            if "version" in pkg_data:
+                current_version = pkg_data["version"]
+    except Exception:
+        pass
+
+    build_marker = FRONTEND_DIR / ".build_version"
+    
+    if FRONTEND_DIR.is_dir():
+        if build_marker.is_file():
+            try:
+                last_build_version = build_marker.read_text().strip()
+                if last_build_version == current_version and current_version != "unknown":
+                    return  # Up to date
+            except Exception:
+                pass
+        # If marker is missing or doesn't match, we need to rebuild.
+
     print(t("startup.building"), file=sys.stderr)
     try:
         steps = [
             (t("startup.installing_deps"), "npm install --no-fund --no-audit"),
             (t("startup.compiling"), "npm run build"),
         ]
-        if (FRONTEND_SRC / "node_modules").is_dir():
-            steps = steps[1:]
 
         for label, cmd in steps:
             print(t("startup.step_progress").format(label=label), file=sys.stderr)
@@ -208,6 +229,10 @@ async def _ensure_frontend_built():
                     file=sys.stderr,
                 )
                 return
+
+        # Write the marker after successful build
+        if current_version != "unknown" and FRONTEND_DIR.is_dir():
+            build_marker.write_text(current_version)
 
         print(t("startup.admin_ready"), file=sys.stderr)
     except Exception as e:

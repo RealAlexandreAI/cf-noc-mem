@@ -50,7 +50,7 @@ DEFAULTS: dict[str, Any] = {
     "api_token": None,
     "cors_origins": None,
     "public_readonly_mcp": False,
-    "locale": "en",
+    "locale": None,
 }
 
 _ENV_MAP: dict[str, str] = {

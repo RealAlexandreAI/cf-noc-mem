@@ -73,8 +73,10 @@ async def list_namespaces():
 
 @router.get("/domains")
 async def list_domains():
-    """Return all domains that contain at least one root-level path."""
+    """Return all valid domains, with root-level node counts where applicable."""
     from sqlalchemy import func, distinct
+
+    valid_domains = config.get("valid_domains") or ["core"]
 
     db = get_db_manager()
     async with db.session() as session:
@@ -88,10 +90,20 @@ async def list_domains():
             .group_by(PathModel.domain)
             .order_by(PathModel.domain)
         )
-        return [
-            {"domain": row.domain, "root_count": row.node_count}
-            for row in result.all()
-        ]
+        db_counts = {row.domain: row.node_count for row in result.all()}
+
+    domains_to_return = []
+    seen = set()
+    for d in valid_domains:
+        domains_to_return.append({"domain": d, "root_count": db_counts.get(d, 0)})
+        seen.add(d)
+
+    for d, count in db_counts.items():
+        if d not in seen:
+            domains_to_return.append({"domain": d, "root_count": count})
+            seen.add(d)
+
+    return domains_to_return
 
 
 @router.get("/node")
@@ -172,7 +184,7 @@ async def get_node(
             "approx_children_count": c.get("approx_children_count", 0)
         }
         for c in children_raw
-        if c["domain"] == domain
+        if c["domain"] == domain and c["path"] != ""
     ]
     children.sort(key=lambda x: (x["priority"] if x["priority"] is not None else 999, x["path"]))
     

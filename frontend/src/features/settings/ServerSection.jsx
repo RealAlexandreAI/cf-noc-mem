@@ -20,7 +20,15 @@ export default function ServerSection({ settings, configPath, lockedFields = [],
     setSaving(true);
     try {
       const payload = { auto_open_browser: autoOpen };
-      if (!isLocked('web_port')) payload.web_port = parseInt(port, 10);
+      if (!isLocked('web_port')) {
+        const parsedPort = parseInt(port, 10);
+        if (isNaN(parsedPort)) {
+          toast(t('settings.server.save_failed') + ': Invalid port number', "error");
+          setSaving(false);
+          return;
+        }
+        payload.web_port = parsedPort;
+      }
       await onSave(payload);
       setDirty(false);
     } catch (e) {

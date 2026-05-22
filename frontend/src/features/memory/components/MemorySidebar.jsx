@@ -163,7 +163,8 @@ const DomainNode = ({ domain, rootCount, activeDomain, activePath, onNavigate })
       <div 
         className={clsx(
           "flex items-center gap-1.5 px-2 py-2 rounded-lg text-sm transition-all cursor-pointer group",
-          isActive ? "bg-indigo-500/10 text-indigo-300 shadow-[0_0_10px_rgba(99,102,241,0.1)]" : "text-slate-400 hover:bg-white/[0.03] hover:text-slate-200"
+          isActive ? "bg-indigo-500/10 text-indigo-300 shadow-[0_0_10px_rgba(99,102,241,0.1)]" : "text-slate-400 hover:bg-white/[0.03] hover:text-slate-200",
+          !isActive && rootCount === 0 && "opacity-40 hover:opacity-100"
         )}
         onClick={handleClick}
       >
@@ -186,7 +187,7 @@ const DomainNode = ({ domain, rootCount, activeDomain, activePath, onNavigate })
         <span className="font-medium flex-1 truncate ml-1">
           {t('memory.sidebar.domain_label', { domain: domain.charAt(0).toUpperCase() + domain.slice(1) })}
         </span>
-        {rootCount !== undefined && (
+        {rootCount !== undefined && rootCount > 0 && (
           <span className="text-[10px] bg-slate-800/80 px-1.5 py-0.5 rounded text-slate-500">{rootCount}</span>
         )}
       </div>
