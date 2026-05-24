@@ -19,6 +19,7 @@
       "section_advanced": "开发者模式 / 高级",
       "section_database": "数据库连接",
       "section_boot_uris": "启动 URI",
+      "section_presets": "启动预设",
       "section_domains": "记忆域名"
     },
     "error": {
@@ -105,6 +106,34 @@
       "namespace_placeholder": "命名空间名称",
       "cancel": "取消",
       "add_namespace": "添加命名空间覆盖"
+    },
+    "presets": {
+      "description": "管理启动 URI 预设。同一时刻只有一个预设处于激活状态，决定 Agent 启动时加载哪些记忆。",
+      "loading": "加载中...",
+      "active": "激活",
+      "activate": "切换",
+      "activate_failed": "切换失败",
+      "edit": "编辑",
+      "duplicate": "复制",
+      "duplicate_failed": "复制失败",
+      "delete": "删除",
+      "delete_title": "删除预设",
+      "delete_message": "确定删除预设「{{name}}」？此操作不可逆。",
+      "delete_failed": "删除失败",
+      "add_new": "新建预设",
+      "name_label": "标识符",
+      "label_label": "显示名称",
+      "label_placeholder": "可选，用于界面显示",
+      "default_namespace": "默认命名空间",
+      "new_namespace_placeholder": "新命名空间 (例如 agent_a)",
+      "add_namespace": "添加",
+      "remove_namespace": "移除命名空间",
+      "save": "保存",
+      "saving": "保存中...",
+      "save_failed": "保存失败",
+      "cancel": "取消",
+      "edit_title": "编辑预设",
+      "create_title": "新建预设"
     },
     "domains": {
       "validation_error": "域名必须以字母开头，只能包含小写字母、数字和下划线。",

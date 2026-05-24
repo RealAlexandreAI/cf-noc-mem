@@ -21,7 +21,6 @@ import shutil
 import subprocess
 import sys
 import webbrowser
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import config as _cfg
 
@@ -56,117 +55,8 @@ from locales import t
 
 
 
-FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+from web_app import FRONTEND_DIR, build_web_app
 FRONTEND_SRC = FRONTEND_DIR.parent
-
-
-def build_web_app(*, extra_routes=None, extra_prefixes=None, lifespan=None):
-    """Build the ASGI app: REST API + optional extra routes + frontend SPA.
-
-    Args:
-        extra_routes:   Additional Starlette Route/Mount objects (e.g. MCP transports).
-        extra_prefixes: Path prefixes for those routes (e.g. ["/sse", "/mcp"]),
-                        so the frontend fallback knows not to capture them.
-        lifespan:       Optional async context manager for the inner Starlette app.
-    """
-    from fastapi import FastAPI
-    from fastapi.middleware.cors import CORSMiddleware
-    from starlette.applications import Starlette
-    from starlette.responses import FileResponse
-    from starlette.routing import Mount, Route
-    from starlette.types import ASGIApp, Receive, Scope, Send
-    from auth import BearerTokenAuthMiddleware, get_cors_config
-    from namespace_middleware import NamespaceMiddleware
-    from locales.middleware import LocaleMiddleware
-    from api import review_router, browse_router, maintenance_router, settings_router
-    from health import router as health_router, health_check
-    from config import ConfigWriteError
-    from fastapi import Request
-    from fastapi.responses import JSONResponse
-
-    api = FastAPI(
-        title="Nocturne Memory API",
-        docs_url="/docs",
-        openapi_url="/openapi.json",
-    )
-    
-    @api.exception_handler(ConfigWriteError)
-    async def config_write_error_handler(request: Request, exc: ConfigWriteError):
-        return JSONResponse(
-            status_code=500,
-            content={"detail": str(exc)},
-        )
-        
-    api.include_router(health_router)
-    api.include_router(review_router)
-    api.include_router(browse_router)
-    api.include_router(maintenance_router)
-    api.include_router(settings_router)
-
-    routes = list(extra_routes or [])
-    routes.append(Mount("/api", app=api))
-
-    async def _health_endpoint(request):
-        return await health_check()
-
-    routes.append(Route("/health", endpoint=_health_endpoint))
-
-    inner = Starlette(routes=routes, lifespan=lifespan)
-    authed = NamespaceMiddleware(
-        LocaleMiddleware(
-            BearerTokenAuthMiddleware(inner, excluded_paths=["/api/health", "/health"])
-        )
-    )
-    cors_authed = CORSMiddleware(
-        authed,
-        **get_cors_config(),
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    backend_prefixes = tuple(["/api", "/health"] + list(extra_prefixes or []))
-
-    class _Fallback:
-        """Route backend prefixes to the inner app; everything else to the SPA."""
-
-        def __init__(self, backend: ASGIApp, dist: Path):
-            self.backend = backend
-            self.dist = dist
-
-        async def __call__(self, scope: Scope, receive: Receive, send: Send):
-            if scope["type"] != "http":
-                await self.backend(scope, receive, send)
-                return
-            path: str = scope.get("path", "/")
-            if any(path == p or path.startswith(p + "/") for p in backend_prefixes):
-                await self.backend(scope, receive, send)
-                return
-                
-            if not self.dist.is_dir():
-                from starlette.responses import PlainTextResponse
-                await PlainTextResponse(
-                    "Admin UI is building or missing. Please refresh in a moment...", 
-                    status_code=503
-                )(scope, receive, send)
-                return
-
-            try:
-                f = (self.dist / path.lstrip("/")).resolve()
-                if path != "/" and f.is_file() and f.is_relative_to(self.dist):
-                    await FileResponse(f)(scope, receive, send)
-                    return
-            except (ValueError, OSError):
-                pass
-                
-            index_file = self.dist / "index.html"
-            if index_file.is_file():
-                await FileResponse(index_file)(scope, receive, send)
-            else:
-                from starlette.responses import PlainTextResponse
-                await PlainTextResponse("Admin UI missing index.html.", status_code=404)(scope, receive, send)
-
-    return _Fallback(cors_authed, FRONTEND_DIR)
 
 
 async def _ensure_frontend_built():
@@ -254,6 +144,11 @@ async def lifespan(server: FastMCP):
         if os.environ.get("SKIP_DB_INIT", "").lower() not in ("true", "1", "yes"):
             await db_manager.init_db()
 
+        # Auto-promote config.json boot_uris into presets table on first run
+        from db import get_preset_service
+        preset_service = get_preset_service()
+        await preset_service.auto_promote_from_config()
+
         # Launch frontend build in background so we don't block MCP handshake
         asyncio.create_task(_ensure_frontend_built())
 
@@ -266,15 +161,21 @@ async def lifespan(server: FastMCP):
             port = int(_cfg.get("web_port"))
             web_host = _cfg.get("host")
             enforce_network_auth(host=web_host)
+            @contextlib.asynccontextmanager
+            async def embedded_lifespan(app):
+                # The parent process (FastMCP lifespan) already owns DB init & close.
+                # The embedded admin UI should not manage the database connection lifecycle.
+                yield
+
             config = uvicorn.Config(
-                build_web_app(), host=web_host, port=port, log_level="warning",
+                build_web_app(lifespan=embedded_lifespan), host=web_host, port=port, log_level="warning",
             )
             web_server = uvicorn.Server(config)
             
             async def _serve_ui():
                 try:
                     await web_server.serve()
-                except Exception as e:
+                except Exception:
                     # Ignore the raw error message (usually OSError for address in use)
                     # and print a user-friendly explanation.
                     print(t("startup.port_in_use").format(port=port), file=sys.stderr)
@@ -464,7 +365,9 @@ async def read_memory(uri: str) -> str:
     # These bypass the database lookup to serve dynamic system content
     if uri.strip() == "system://boot":
         ns = get_namespace()
-        current_core_uris = _cfg.get_boot_uris(ns)
+        from db import get_preset_service
+        preset_service = get_preset_service()
+        current_core_uris = await preset_service.get_boot_uris(ns)
         return await generate_boot_memory_view(current_core_uris)
 
     # system://index/<domain>

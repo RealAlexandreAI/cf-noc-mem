@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Database, Server, List, Tag, Settings, X, RefreshCw, Globe
+  Database, Server, Layers, Tag, Settings, X, RefreshCw, Globe
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import i18n, { detectLocale } from '../../i18n';
@@ -8,6 +8,7 @@ import { getSettings, updateSettings, getDatabaseStatus } from '../../lib/api';
 
 import Section from './Section';
 import DatabaseSection from './DatabaseSection';
+import PresetsSection from './PresetsSection';
 import BootUrisSection from './BootUrisSection';
 import DomainsSection from './DomainsSection';
 import ServerSection from './ServerSection';
@@ -85,7 +86,7 @@ export default function SettingsDrawer() {
   const tabs = [
     { id: 'general', label: t('app.settings.tab_general'), icon: Settings },
     { id: 'database', label: t('app.settings.tab_database'), icon: Database },
-    { id: 'memory', label: t('app.settings.tab_memory'), icon: List },
+    { id: 'memory', label: t('app.settings.tab_memory'), icon: Layers },
   ];
 
   return (
@@ -176,8 +177,8 @@ export default function SettingsDrawer() {
 
               {activeTab === 'memory' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-200">
-                  <Section icon={List} title={t('app.settings.section_boot_uris')}>
-                    <BootUrisSection />
+                  <Section icon={Layers} title={t('app.settings.section_presets')}>
+                    <PresetsSection />
                   </Section>
 
                   <Section icon={Tag} title={t('app.settings.section_domains')}>

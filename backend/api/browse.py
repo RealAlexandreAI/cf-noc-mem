@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 import config
-from db import get_graph_service, get_glossary_service, get_db_manager, get_search_indexer
+from db import get_graph_service, get_glossary_service, get_db_manager, get_search_indexer, get_preset_service
 from db.models import Path as PathModel, Edge as EdgeModel, ROOT_NODE_UUID
 from db.namespace import get_namespace
 from locales import t
@@ -403,20 +403,7 @@ async def rename_node(body: RenameRequest):
             detail=t("api.browse.rename_partial_failure").format(error=e),
         )
 
-    old_prefix = old_uri + "/"
-    new_prefix = new_uri + "/"
-    ns = get_namespace()
-    boot_uris = config.get_boot_uris(ns)
-    rewritten = []
-    for u in boot_uris:
-        if u == old_uri:
-            rewritten.append(new_uri)
-        elif u.startswith(old_prefix):
-            rewritten.append(new_prefix + u[len(old_prefix):])
-        else:
-            rewritten.append(u)
-    if rewritten != boot_uris:
-        config.set_boot_uris(rewritten, ns)
+    await get_preset_service().rewrite_boot_uri(old_uri, new_uri, get_namespace())
 
     return {
         "success": True,
@@ -494,12 +481,7 @@ async def delete_node(
         raise HTTPException(status_code=422, detail=str(e))
 
     deleted_uri = f"{domain}://{path}"
-    subtree_prefix = deleted_uri + "/"
-    ns = get_namespace()
-    boot_uris = config.get_boot_uris(ns)
-    cleaned = [u for u in boot_uris if u != deleted_uri and not u.startswith(subtree_prefix)]
-    if len(cleaned) != len(boot_uris):
-        config.set_boot_uris(cleaned, ns)
+    await get_preset_service().purge_boot_uri(deleted_uri, get_namespace())
 
     return {"success": True, "uri": deleted_uri}
 

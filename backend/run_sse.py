@@ -15,7 +15,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import config as _cfg
 from auth import enforce_network_auth
-from mcp_server import mcp, build_web_app
+from mcp_server import mcp
+from web_app import build_web_app
 
 
 def main():

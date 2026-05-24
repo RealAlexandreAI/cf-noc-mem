@@ -126,21 +126,24 @@ async def update_settings(body: SettingsUpdate):
 
 @router.get("/boot-uris")
 async def get_boot_uris():
-    """Return boot URIs for the current namespace."""
-    ns = get_namespace()
-    return {"uris": config.get_boot_uris(ns)}
+    """Return boot URIs for the current namespace (reads from active preset)."""
+    from db import get_preset_service
+    service = get_preset_service()
+    uris = await service.get_boot_uris(get_namespace())
+    return {"uris": uris}
 
 
 @router.put("/boot-uris")
 async def set_boot_uris(body: BootUriUpdate):
-    """Replace the full boot URI list (supports reorder)."""
-    ns = get_namespace()
+    """Replace the full boot URI list for the current namespace."""
+    from db import get_preset_service
 
     for uri in body.uris:
         if not _URI_RE.match(uri):
             raise HTTPException(status_code=422, detail=t("api.settings.invalid_uri_format").format(uri=uri))
 
-    config.set_boot_uris(body.uris, ns)
+    service = get_preset_service()
+    await service.set_boot_uris(get_namespace(), body.uris)
     return {"success": True, "uris": body.uris}
 
 
@@ -152,8 +155,10 @@ class BootUriToggle(BaseModel):
 @router.patch("/boot-uris")
 async def toggle_boot_uri(body: BootUriToggle):
     """Add or remove a single URI from the boot list."""
+    from db import get_preset_service
     ns = get_namespace()
-    current = config.get_boot_uris(ns)
+    service = get_preset_service()
+    current = await service.get_boot_uris(ns)
     uri = body.uri.strip()
     if not uri:
         raise HTTPException(status_code=422, detail=t("api.settings.uri_empty"))
@@ -166,7 +171,7 @@ async def toggle_boot_uri(body: BootUriToggle):
     else:
         current = [u for u in current if u != uri]
 
-    config.set_boot_uris(current, ns)
+    await service.set_boot_uris(ns, current)
     return {"success": True, "uris": current}
 
 
@@ -180,29 +185,42 @@ def _resolve_ns(namespace: str) -> str:
 
 @router.get("/boot-uris/all")
 async def get_all_boot_uris():
-    """Return boot URIs for every namespace at once."""
+    """Return boot URIs for every namespace at once (from active preset)."""
+    from db import get_preset_service
+    import json
+    service = get_preset_service()
+    active = await service.get_active_preset()
+    if active:
+        return {"boot_uris": json.loads(active.boot_uris)}
     return {"boot_uris": config.get_all_boot_uris()}
 
 
 @router.put("/boot-uris/ns/{namespace}")
 async def set_boot_uris_for_ns(namespace: str, body: BootUriUpdate):
-    """Set boot URIs for a specific namespace. Use '_default' for the default."""
+    """Set boot URIs for a specific namespace."""
+    from db import get_preset_service
     ns = _resolve_ns(namespace)
     for uri in body.uris:
         if not _URI_RE.match(uri):
             raise HTTPException(status_code=422, detail=t("api.settings.invalid_uri_format").format(uri=uri))
-    config.set_boot_uris(body.uris, ns)
+
+    service = get_preset_service()
+    await service.set_boot_uris(ns, body.uris)
     return {"success": True, "namespace": ns, "uris": body.uris}
 
 
 @router.delete("/boot-uris/ns/{namespace}")
 async def delete_boot_uris_for_ns(namespace: str):
-    """Remove a namespace override so it falls back to default."""
+    """Remove a namespace override."""
+    from db import get_preset_service
     ns = _resolve_ns(namespace)
     if ns == "":
         raise HTTPException(status_code=400, detail=t("api.settings.cannot_delete_default_ns"))
-    if not config.delete_boot_uris(ns):
+
+    service = get_preset_service()
+    if not await service.delete_boot_uris(ns):
         raise HTTPException(status_code=404, detail=t("api.settings.no_boot_uri_override").format(ns=ns))
+
     return {"success": True, "namespace": namespace}
 
 

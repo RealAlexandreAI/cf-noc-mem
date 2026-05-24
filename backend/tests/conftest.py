@@ -128,7 +128,7 @@ async def api_client():
     await get_db_manager().init_db()
 
     transport = ASGITransport(app=main.app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+    async with AsyncClient(transport=transport, base_url="http://testserver/api") as client:
         yield client
 
 

@@ -13,18 +13,20 @@ from .snapshot import ChangesetStore, get_changeset_store
 from .namespace import get_namespace, set_namespace
 from .models import (
     Base, ROOT_NODE_UUID, Node, Memory, Edge, Path,
-    GlossaryKeyword, SearchDocument, ChangeCollector,
+    GlossaryKeyword, SearchDocument, ChangeCollector, Preset,
 )
 
 if TYPE_CHECKING:
     from .graph import GraphService
     from .search import SearchIndexer
     from .glossary import GlossaryService
+    from .presets import PresetService
 
 _db_manager: Optional[DatabaseManager] = None
 _graph_service: Optional["GraphService"] = None
 _search_indexer: Optional["SearchIndexer"] = None
 _glossary_service: Optional["GlossaryService"] = None
+_preset_service: Optional["PresetService"] = None
 
 
 def _resolve_database_url() -> str:
@@ -45,7 +47,7 @@ def _resolve_database_url() -> str:
 
 
 def _ensure_initialized():
-    global _db_manager, _graph_service, _search_indexer, _glossary_service
+    global _db_manager, _graph_service, _search_indexer, _glossary_service, _preset_service
     if _db_manager is not None:
         return
 
@@ -54,11 +56,13 @@ def _ensure_initialized():
     from .search import SearchIndexer
     from .glossary import GlossaryService
     from .graph import GraphService
+    from .presets import PresetService
 
     _db_manager = DatabaseManager(database_url)
     _search_indexer = SearchIndexer(_db_manager)
     _glossary_service = GlossaryService(_db_manager, _search_indexer)
     _graph_service = GraphService(_db_manager, _search_indexer)
+    _preset_service = PresetService(_db_manager)
 
 
 def get_db_manager() -> DatabaseManager:
@@ -81,24 +85,31 @@ def get_glossary_service() -> "GlossaryService":
     return _glossary_service  # type: ignore[return-value]
 
 
+def get_preset_service() -> "PresetService":
+    _ensure_initialized()
+    return _preset_service  # type: ignore[return-value]
+
+
 async def close_db():
     """Tear down all services and close the database connection."""
-    global _db_manager, _graph_service, _search_indexer, _glossary_service
+    global _db_manager, _graph_service, _search_indexer, _glossary_service, _preset_service
     if _db_manager:
         await _db_manager.close()
     _db_manager = None
     _graph_service = None
     _search_indexer = None
     _glossary_service = None
+    _preset_service = None
 
 
 __all__ = [
     "DatabaseManager",
     "get_db_manager", "get_graph_service",
     "get_search_indexer", "get_glossary_service",
+    "get_preset_service",
     "close_db",
     "ChangesetStore", "get_changeset_store",
     "get_namespace", "set_namespace",
     "Base", "ROOT_NODE_UUID", "Node", "Memory", "Edge", "Path",
-    "GlossaryKeyword", "SearchDocument", "ChangeCollector",
+    "GlossaryKeyword", "SearchDocument", "ChangeCollector", "Preset",
 ]

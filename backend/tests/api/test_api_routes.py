@@ -305,7 +305,7 @@ async def test_api_requires_bearer_token_when_configured(reload_module, monkeypa
     await get_db_manager().init_db()
 
     transport = ASGITransport(app=main.app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+    async with AsyncClient(transport=transport, base_url="http://testserver/api") as client:
         unauthorized = await client.get("/browse/domains")
         authorized = await client.get(
             "/browse/domains",

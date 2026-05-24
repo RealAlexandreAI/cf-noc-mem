@@ -21,6 +21,7 @@
       "section_advanced": "Developer Mode / Advanced",
       "section_database": "Database Connection",
       "section_boot_uris": "Boot URIs",
+      "section_presets": "Boot Presets",
       "section_domains": "Memory Domains"
     },
     "error": {
@@ -109,6 +110,34 @@
       "namespace_placeholder": "Namespace name",
       "cancel": "Cancel",
       "add_namespace": "Add Namespace Override"
+    },
+    "presets": {
+      "description": "Manage boot URI presets. Only one preset is active at a time, determining which memories are loaded at agent boot.",
+      "loading": "Loading...",
+      "active": "Active",
+      "activate": "Activate",
+      "activate_failed": "Activation failed",
+      "edit": "Edit",
+      "duplicate": "Duplicate",
+      "duplicate_failed": "Duplication failed",
+      "delete": "Delete",
+      "delete_title": "Delete Preset",
+      "delete_message": "Delete preset \"{{name}}\"? This cannot be undone.",
+      "delete_failed": "Deletion failed",
+      "add_new": "New Preset",
+      "name_label": "Identifier",
+      "label_label": "Display Name",
+      "label_placeholder": "Optional, shown in UI",
+      "default_namespace": "Default namespace",
+      "new_namespace_placeholder": "New namespace (e.g. agent_a)",
+      "add_namespace": "Add Namespace",
+      "remove_namespace": "Remove Namespace",
+      "save": "Save",
+      "saving": "Saving...",
+      "save_failed": "Save failed",
+      "cancel": "Cancel",
+      "edit_title": "Edit Preset",
+      "create_title": "Create Preset"
     },
     "domains": {
       "validation_error": "Domain names must start with a letter and can only contain lowercase letters, numbers, and underscores.",

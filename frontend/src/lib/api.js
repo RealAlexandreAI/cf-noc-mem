@@ -102,6 +102,26 @@ export const setBootUrisForNs = (namespace, uris) =>
 export const deleteBootUrisForNs = (namespace) =>
   api.delete(`/settings/boot-uris/ns/${_nsSlug(namespace)}`).then(res => res.data);
 
+// --- Presets ---
+
+export const listPresets = () =>
+  api.get('/presets').then(res => res.data.presets);
+
+export const createPreset = (data) =>
+  api.post('/presets', data).then(res => res.data);
+
+export const updatePreset = (id, data) =>
+  api.put(`/presets/${id}`, data).then(res => res.data);
+
+export const deletePreset = (id) =>
+  api.delete(`/presets/${id}`).then(res => res.data);
+
+export const activatePreset = (id) =>
+  api.post(`/presets/${id}/activate`).then(res => res.data);
+
+export const duplicatePreset = (id, newName) =>
+  api.post(`/presets/${id}/duplicate`, { new_name: newName }).then(res => res.data);
+
 export const getDatabaseStatus = () =>
   api.get('/settings/database/status').then(res => res.data);
 
