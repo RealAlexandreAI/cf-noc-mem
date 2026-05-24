@@ -39,7 +39,6 @@ class PresetService:
 
             preset = Preset(
                 name="default",
-                label=None,
                 boot_uris=json.dumps(legacy, ensure_ascii=False),
                 is_active=True,
             )
@@ -140,7 +139,6 @@ class PresetService:
         self,
         name: str,
         boot_uris: dict,
-        label: Optional[str] = None,
         activate: bool = False,
     ) -> dict:
         from sqlalchemy.exc import IntegrityError
@@ -152,7 +150,6 @@ class PresetService:
 
             preset = Preset(
                 name=name,
-                label=label,
                 boot_uris=json.dumps(boot_uris, ensure_ascii=False),
                 is_active=activate,
             )
@@ -176,8 +173,6 @@ class PresetService:
 
             if "name" in kwargs:
                 preset.name = kwargs["name"]
-            if "label" in kwargs:
-                preset.label = kwargs["label"]
             if "boot_uris" in kwargs:
                 preset.boot_uris = json.dumps(kwargs["boot_uris"], ensure_ascii=False)
 
@@ -221,7 +216,6 @@ class PresetService:
 
             new_preset = Preset(
                 name=new_name,
-                label=f"{source.label or source.name} (copy)" if source.label else None,
                 boot_uris=source.boot_uris,
                 path_masks=source.path_masks,
                 is_active=False,
@@ -238,7 +232,6 @@ class PresetService:
         return {
             "id": preset.id,
             "name": preset.name,
-            "label": preset.label,
             "boot_uris": json.loads(preset.boot_uris),
             "path_masks": json.loads(preset.path_masks) if preset.path_masks else None,
             "is_active": preset.is_active,

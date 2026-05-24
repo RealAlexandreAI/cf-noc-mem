@@ -16,7 +16,6 @@ async def test_presets_api_lifecycle(api_client):
     # 2. Create a new preset
     create_payload = {
         "name": "preset_b",
-        "label": "Preset B Label",
         "boot_uris": {"": ["core://agent"]},
         "activate": False,
     }
@@ -24,7 +23,6 @@ async def test_presets_api_lifecycle(api_client):
     assert create_response.status_code == 201
     preset_b = create_response.json()
     assert preset_b["name"] == "preset_b"
-    assert preset_b["label"] == "Preset B Label"
     assert preset_b["is_active"] is False
 
     # 3. Create another preset with the same name (should fail with 409)
@@ -42,7 +40,6 @@ async def test_presets_api_lifecycle(api_client):
     # 4. Create preset C
     create_payload_c = {
         "name": "preset_c",
-        "label": "Preset C Label",
         "boot_uris": {"": ["core://agent"]},
         "activate": False,
     }
@@ -57,10 +54,10 @@ async def test_presets_api_lifecycle(api_client):
     assert "already exists" in update_response_fail.json()["detail"]
 
     # 6. Update preset C's name to its own name (should succeed)
-    update_payload_same = {"name": "preset_c", "label": "Preset C New Label"}
+    update_payload_same = {"name": "preset_c"}
     update_response_same = await api_client.put(f"/presets/{preset_c['id']}", json=update_payload_same)
     assert update_response_same.status_code == 200
-    assert update_response_same.json()["label"] == "Preset C New Label"
+    assert update_response_same.json()["name"] == "preset_c"
 
     # 7. Update preset C's name to a new unique name (should succeed)
     update_payload_new = {"name": "preset_c_unique"}

@@ -21,14 +21,12 @@ _URI_RE = re.compile(r"^[a-zA-Z0-9_-]+://[a-zA-Z0-9_/\.-]*$")
 
 class PresetCreate(BaseModel):
     name: str
-    label: Optional[str] = None
     boot_uris: dict[str, list[str]]
     activate: bool = False
 
 
 class PresetUpdate(BaseModel):
     name: Optional[str] = None
-    label: Optional[str] = None
     boot_uris: Optional[dict[str, list[str]]] = None
 
 
@@ -81,7 +79,6 @@ async def create_preset(body: PresetCreate):
         preset = await service.create_preset(
             name=trimmed_name,
             boot_uris=body.boot_uris,
-            label=body.label,
             activate=body.activate,
         )
     except ValueError as e:

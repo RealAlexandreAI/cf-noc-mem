@@ -16,7 +16,6 @@ function PresetEditor({ preset, onSaved, onCancel }) {
   const { t } = useTranslation();
   const [bootUris, setBootUris] = useState(preset.boot_uris || { '': [] });
   const [name, setName] = useState(preset.name || '');
-  const [label, setLabel] = useState(preset.label || '');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [newUri, setNewUri] = useState({});
@@ -91,9 +90,9 @@ function PresetEditor({ preset, onSaved, onCancel }) {
     setSaving(true);
     try {
       if (preset.id) {
-        await updatePreset(preset.id, { name, label: label || null, boot_uris: bootUris });
+        await updatePreset(preset.id, { name, boot_uris: bootUris });
       } else {
-        await createPreset({ name, label: label || null, boot_uris: bootUris });
+        await createPreset({ name, boot_uris: bootUris });
       }
       setDirty(false);
       onSaved?.();
@@ -106,34 +105,27 @@ function PresetEditor({ preset, onSaved, onCancel }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <label className="text-xs text-slate-500 mb-1 block">{t('settings.presets.name_label')}</label>
-          <input
-            type="text"
-            value={name}
-            onChange={e => { setName(e.target.value); setDirty(true); }}
-            placeholder="default"
-            className="w-full bg-slate-950 border border-slate-700 text-slate-200 rounded-md px-2.5 py-1.5 text-sm font-mono placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-          />
-        </div>
-        <div className="flex-1">
-          <label className="text-xs text-slate-500 mb-1 block">{t('settings.presets.label_label')}</label>
-          <input
-            type="text"
-            value={label}
-            onChange={e => { setLabel(e.target.value); setDirty(true); }}
-            placeholder={t('settings.presets.label_placeholder')}
-            className="w-full bg-slate-950 border border-slate-700 text-slate-200 rounded-md px-2.5 py-1.5 text-sm placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-          />
-        </div>
+      {/* 友好引导 Tips */}
+      <p className="text-xs text-slate-400 bg-slate-950/40 border border-slate-800 rounded-lg p-2.5 leading-relaxed">
+        {t('settings.presets.editor_tip')}
+      </p>
+
+      <div>
+        <label className="text-xs text-slate-500 mb-1 block">{t('settings.presets.name_label')}</label>
+        <input
+          type="text"
+          value={name}
+          onChange={e => { setName(e.target.value); setDirty(true); }}
+          placeholder={t('settings.presets.name_placeholder')}
+          className="w-full bg-slate-950 border border-slate-700 text-slate-200 rounded-md px-2.5 py-1.5 text-sm placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+        />
       </div>
 
       {namespaces.map(ns => (
         <div key={ns} className="bg-slate-900/60 border border-slate-800 rounded-lg p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-xs text-slate-400 font-mono">
-              {ns === '' ? t('settings.presets.default_namespace') : `namespace: ${ns}`}
+            <div className="text-xs text-slate-400 font-medium">
+              {ns === '' ? t('settings.presets.default_namespace') : t('settings.presets.namespace_title', { namespace: ns })}
             </div>
             {ns !== '' && (
               <button
@@ -173,7 +165,7 @@ function PresetEditor({ preset, onSaved, onCancel }) {
               value={newUri[ns] || ''}
               onChange={e => setNewUri(prev => ({ ...prev, [ns]: e.target.value }))}
               onKeyDown={e => e.key === 'Enter' && handleAddUri(ns)}
-              placeholder="core://..."
+              placeholder={t('settings.presets.uri_placeholder')}
               className="flex-1 bg-slate-950 border border-slate-700 text-slate-200 rounded-md px-2.5 py-1.5 text-xs font-mono placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-inner"
             />
             <button
@@ -236,7 +228,7 @@ function PresetCard({ preset, onActivate, onDelete, onDuplicate, onEdit }) {
   const handleDelete = () => {
     setConfirmState({
       title: t('settings.presets.delete_title'),
-      message: t('settings.presets.delete_message', { name: preset.label || preset.name }),
+      message: t('settings.presets.delete_message', { name: preset.name }),
       variant: 'danger',
       confirmLabel: t('settings.presets.delete'),
       onConfirm: () => { setConfirmState(null); onDelete(preset.id); },
@@ -255,11 +247,8 @@ function PresetCard({ preset, onActivate, onDelete, onDuplicate, onEdit }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-slate-200 truncate">
-              {preset.label || preset.name}
+              {preset.name}
             </span>
-            {preset.label && (
-              <span className="text-[10px] font-mono text-slate-500">{preset.name}</span>
-            )}
             {preset.is_active && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center gap-1">
                 <Check size={8} /> {t('settings.presets.active')}
@@ -312,7 +301,7 @@ function PresetCard({ preset, onActivate, onDelete, onDuplicate, onEdit }) {
 
 
 export default function PresetsSection() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [presets, setPresets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // null | preset object | { new: true }
@@ -352,7 +341,10 @@ export default function PresetsSection() {
 
   const handleDuplicate = async (id) => {
     const source = presets.find(p => p.id === id);
-    const baseName = source ? `${source.name}_copy` : 'copy';
+    const isZh = i18n.language?.startsWith('zh');
+    const suffix = isZh ? '_副本' : '_copy';
+    const fallbackBase = isZh ? '新方案' : 'copy';
+    const baseName = source ? `${source.name}${suffix}` : fallbackBase;
     const newName = duplicateCounter > 0 ? `${baseName}_${duplicateCounter}` : baseName;
     setDuplicateCounter(c => c + 1);
     try {
@@ -368,7 +360,7 @@ export default function PresetsSection() {
   };
 
   const handleNew = () => {
-    setEditing({ name: '', label: '', boot_uris: { '': [] }, id: null });
+    setEditing({ name: '', boot_uris: { '': [] }, id: null });
   };
 
   if (loading) {

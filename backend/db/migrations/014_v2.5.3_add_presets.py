@@ -19,7 +19,6 @@ async def up(engine: AsyncEngine):
                 CREATE TABLE IF NOT EXISTS presets (
                     id SERIAL PRIMARY KEY,
                     name TEXT NOT NULL UNIQUE,
-                    label TEXT,
                     boot_uris TEXT NOT NULL DEFAULT '{}',
                     path_masks TEXT,
                     is_active BOOLEAN NOT NULL DEFAULT FALSE,
@@ -41,7 +40,6 @@ async def up(engine: AsyncEngine):
                 CREATE TABLE IF NOT EXISTS presets (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
-                    label TEXT,
                     boot_uris TEXT NOT NULL DEFAULT '{}',
                     path_masks TEXT,
                     is_active BOOLEAN NOT NULL DEFAULT 0,

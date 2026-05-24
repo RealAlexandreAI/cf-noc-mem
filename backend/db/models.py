@@ -254,7 +254,6 @@ class Preset(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False, unique=True)
-    label = Column(Text, nullable=True)
     boot_uris = Column(Text, nullable=False, default="{}")
     path_masks = Column(Text, nullable=True)
     is_active = Column(Boolean, nullable=False, default=False)
