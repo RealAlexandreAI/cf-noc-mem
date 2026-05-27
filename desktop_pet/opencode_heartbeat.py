@@ -70,7 +70,9 @@ VERBOSE = True
 
 ENGINE_CONFIG = HeartbeatConfig(
     source_name="opencode_heartbeat.py",
-    screenshot_mode=ScreenshotMode.ATTACH,
+    screenshot_mode=ScreenshotMode(
+        os.getenv("AG_SCREENSHOT_MODE", "attach")
+    ),
 )
 
 # ============================================================
