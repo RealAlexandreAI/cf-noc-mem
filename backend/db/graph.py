@@ -2026,6 +2026,7 @@ class GraphService:
                 category = "deprecated" if memory.migrated_to else "orphaned"
                 item = {
                     "id": memory.id,
+                    "node_uuid": memory.node_uuid,
                     "content_snippet": memory.content[:200] + "..."
                     if len(memory.content) > 200
                     else memory.content,
@@ -2072,6 +2073,7 @@ class GraphService:
 
             detail = {
                 "id": memory.id,
+                "node_uuid": memory.node_uuid,
                 "content": memory.content,
                 "created_at": memory.created_at.isoformat()
                 if memory.created_at

@@ -376,7 +376,9 @@
     "badge": {
       "deprecated": "Deprecated",
       "orphaned": "Orphaned",
-      "unknown_date": "Unknown"
+      "unknown_date": "Unknown",
+      "node_prefix": "Node:",
+      "mem_prefix": "Mem: #{{id}}"
     },
     "detail": {
       "target_no_paths": "Target #{{id}} also has no paths",
@@ -396,9 +398,7 @@
     },
     "stats": {
       "deprecated_label": "Deprecated",
-      "deprecated_desc": "Old versions from updates",
       "orphaned_label": "Orphaned",
-      "orphaned_desc": "Inaccessible (no paths)",
       "access_logs_label": "Access Logs",
       "clearing": "Clearing...",
       "clear_button": "Clear",
@@ -417,6 +417,13 @@
     "section": {
       "deprecated_versions": "Deprecated Versions",
       "orphaned_memories": "Orphan Memories"
+    },
+    "group": {
+      "all": "All Memories",
+      "deprecated_groups": "Deprecated Groups",
+      "orphaned_section": "Orphan Memories",
+      "orphaned_group": "Orphan Memories (no paths)",
+      "no_path": "Target #{{id}} (no paths)"
     }
   },
 
