@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Trash2, Sparkles, AlertTriangle, RefreshCw,
   ChevronDown, ChevronUp, ArrowRight, Unlink, Archive, CheckSquare, Square, Minus,
-  Layers
+  Layers, Undo2, Loader2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import DiffViewer from '../../components/DiffViewer';
@@ -23,6 +23,7 @@ export default function MaintenancePage() {
   const [expandedId, setExpandedId] = useState(null);
   const [detailData, setDetailData] = useState({});
   const [detailLoading, setDetailLoading] = useState(null);
+  const [restoringId, setRestoringId] = useState(null);
 
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [batchDeleting, setBatchDeleting] = useState(false);
@@ -412,9 +413,23 @@ export default function MaintenancePage() {
             ) : detail ? (
               <div className="space-y-4">
                 <div>
-                  <h4 className="text-[11px] uppercase tracking-widest text-slate-500 mb-2 font-semibold">
-                    {detail.migration_target ? t('maintenance.detail.old_version') : t('maintenance.detail.full_content')}
-                  </h4>
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="text-[11px] uppercase tracking-widest text-slate-500 font-semibold">
+                      {detail.migration_target ? t('maintenance.detail.old_version') : t('maintenance.detail.full_content')}
+                    </h4>
+                    {restoringId !== item.id && item.category === 'orphaned' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRestoringId(item.id);
+                        }}
+                        className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded bg-indigo-950/40 text-indigo-300 hover:bg-indigo-900/40 hover:text-indigo-200 border border-indigo-800/40 transition-colors"
+                      >
+                        <Undo2 size={11} />
+                        {t('maintenance.detail.restore_btn')}
+                      </button>
+                    )}
+                  </div>
                   <div className="bg-[#060610] rounded p-4 border border-slate-800/60 text-[12px] text-slate-300 font-mono leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto custom-scrollbar">
                     {detail.content}
                   </div>
@@ -437,6 +452,20 @@ export default function MaintenancePage() {
                       />
                     </div>
                   </div>
+                )}
+
+                {restoringId === item.id && (
+                  <RestoreForm
+                    memoryId={item.id}
+                    onCancel={() => setRestoringId(null)}
+                    onSuccess={() => {
+                      setOrphans(prev => prev.filter(o => o.id !== item.id));
+                      if (expandedId === item.id) {
+                        setExpandedId(null);
+                      }
+                      setRestoringId(null);
+                    }}
+                  />
                 )}
               </div>
             ) : null}
@@ -758,3 +787,202 @@ export default function MaintenancePage() {
     </div>
   );
 }
+
+const RestoreForm = ({ memoryId, onCancel, onSuccess }) => {
+  const { t } = useLocale();
+  const [domain, setDomain] = useState('core');
+  const [pathSegments, setPathSegments] = useState([]);
+  const [childrenByLevel, setChildrenByLevel] = useState([[]]);
+  const [leafName, setLeafName] = useState('');
+  const [disclosure, setDisclosure] = useState('');
+  const [priority, setPriority] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [loadingLevel, setLoadingLevel] = useState(-1);
+
+  const fetchChildren = async (parentPath, currentDomain) => {
+    try {
+      const res = await api.get('/browse/node', {
+        params: { domain: currentDomain, path: parentPath, nav_only: true }
+      });
+      return (res.data.children || []).map(c => c.path.split('/').pop());
+    } catch {
+      return [];
+    }
+  };
+
+  // When domain changes, reset path selection and load level 0 children for new domain
+  useEffect(() => {
+    setPathSegments([]);
+    setChildrenByLevel([[]]);
+    setLoadingLevel(0);
+    fetchChildren('', domain).then(names => {
+      setChildrenByLevel([names]);
+      setLoadingLevel(-1);
+    });
+  }, [domain]);
+
+  const handleSegmentChange = async (level, value) => {
+    if (value === '') {
+      setPathSegments(prev => prev.slice(0, level));
+      setChildrenByLevel(prev => prev.slice(0, level + 1));
+    } else {
+      const newSegments = [...pathSegments.slice(0, level), value];
+      setPathSegments(newSegments);
+      setChildrenByLevel(prev => prev.slice(0, level + 1));
+
+      const fullPath = newSegments.join('/');
+      setLoadingLevel(level + 1);
+      const children = await fetchChildren(fullPath, domain);
+      if (children.length > 0) {
+        setChildrenByLevel(prev => [...prev, children]);
+      }
+      setLoadingLevel(-1);
+    }
+  };
+
+  const buildFullPath = () => {
+    const leaf = leafName.trim();
+    if (!leaf) return '';
+    const parent = pathSegments.join('/');
+    return parent ? `${parent}/${leaf}` : leaf;
+  };
+
+  const handleRestore = async () => {
+    const fullPath = buildFullPath();
+    if (!fullPath) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api.post(`/maintenance/orphans/${memoryId}/restore`, {
+        new_domain: domain,
+        new_path: fullPath,
+        priority: priority,
+        disclosure: disclosure.trim() || undefined,
+      });
+      toast(t('maintenance.detail.restore_success_toast', { uri: `${domain}://${fullPath}` }), 'success');
+      onSuccess();
+    } catch (err) {
+      const errMsg = err.response?.data?.detail || err.message;
+      setError(t('maintenance.detail.restore_failed_toast', { error: errMsg }));
+      toast(t('maintenance.detail.restore_failed_toast', { error: errMsg }), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-[#090910] border border-indigo-500/20 rounded-lg p-4 space-y-3.5 mt-4">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-400">
+        <Undo2 size={14} />
+        <span>{t('maintenance.detail.restore_title')}</span>
+      </div>
+
+      <div className="space-y-3">
+        {/* Domain & Cascading Path Selectors */}
+        <div className="space-y-1.5">
+          <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-500">
+            {t('maintenance.detail.restore_path_label')}
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={domain}
+              onChange={e => setDomain(e.target.value)}
+              className="px-2 py-1 bg-[#06060B] border border-slate-700/60 rounded text-slate-300 text-xs font-mono focus:outline-none focus:border-indigo-500/50"
+            >
+              <option value="core">core</option>
+              <option value="writer">writer</option>
+              <option value="project">project</option>
+            </select>
+            <span className="text-slate-500 font-mono text-xs">://</span>
+
+            {childrenByLevel.map((options, level) => (
+              options.length > 0 && (
+                <React.Fragment key={level}>
+                  {level > 0 && <span className="text-slate-600 text-xs font-mono">/</span>}
+                  <select
+                    value={pathSegments[level] || ''}
+                    onChange={e => handleSegmentChange(level, e.target.value)}
+                    className="px-2 py-1 bg-[#06060B] border border-slate-700/60 rounded text-indigo-300 text-xs font-mono focus:outline-none focus:border-indigo-500/50"
+                  >
+                    <option value="">{level === 0 ? t('maintenance.detail.restore_parent_placeholder') : '—'}</option>
+                    {options.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </React.Fragment>
+              )
+            ))}
+
+            {loadingLevel >= 0 && <Loader2 size={12} className="animate-spin text-slate-500" />}
+            <span className="text-slate-600 text-xs font-mono">/</span>
+            <input
+              type="text"
+              value={leafName}
+              onChange={e => setLeafName(e.target.value)}
+              placeholder={t('maintenance.detail.restore_leaf_placeholder')}
+              className="px-2 py-1 bg-[#06060B] border border-indigo-500/30 rounded text-indigo-300 text-xs font-mono focus:outline-none focus:border-indigo-500/50 w-36"
+            />
+          </div>
+        </div>
+
+        {/* Priority & Disclosure in parallel */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="space-y-1.5 md:col-span-3">
+            <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-500">
+              {t('memory.alias.disclosure_placeholder')}
+            </label>
+            <input
+              type="text"
+              value={disclosure}
+              onChange={e => setDisclosure(e.target.value)}
+              placeholder={t('maintenance.detail.restore_disclosure_placeholder')}
+              className="w-full px-2.5 py-1.5 bg-[#06060B] border border-slate-700/60 rounded text-slate-300 text-xs focus:outline-none focus:border-indigo-500/50"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-500">
+              {t('maintenance.detail.restore_priority_label')}
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={priority}
+              onChange={e => setPriority(parseInt(e.target.value) || 0)}
+              className="w-full px-2.5 py-1.5 bg-[#06060B] border border-slate-700/60 rounded text-slate-300 text-xs font-mono focus:outline-none focus:border-indigo-500/50"
+            />
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="text-xs text-rose-400 font-medium">
+          {error}
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div className="flex justify-end gap-2 pt-1 border-t border-slate-800/60">
+        <button
+          onClick={onCancel}
+          disabled={saving}
+          className="px-3 py-1.5 rounded text-xs font-medium bg-slate-850 hover:bg-slate-800 text-slate-300 transition-colors disabled:opacity-50"
+        >
+          {t('maintenance.detail.restore_cancel_btn')}
+        </button>
+        <button
+          onClick={handleRestore}
+          disabled={saving || !leafName.trim()}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-slate-100 disabled:opacity-50 transition-colors"
+        >
+          {saving ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Undo2 size={12} />
+          )}
+          {t('maintenance.detail.restore_confirm_btn')}
+        </button>
+      </div>
+    </div>
+  );
+};

@@ -379,7 +379,19 @@
       "error_prefix": "错误：{{error}}",
       "old_version": "旧版本（此记忆）",
       "full_content": "完整内容",
-      "diff_header": "差异：#{{fromId}} → #{{toId}}"
+      "diff_header": "差异：#{{fromId}} → #{{toId}}",
+      "restore_btn": "恢复此记忆",
+      "restore_title": "恢复记忆配置",
+      "restore_domain_label": "域名",
+      "restore_path_label": "目标路径",
+      "restore_parent_placeholder": "选择父路径",
+      "restore_leaf_placeholder": "新节点名称",
+      "restore_disclosure_placeholder": "输入触发条件（Disclosure）",
+      "restore_priority_label": "优先级",
+      "restore_confirm_btn": "确认恢复",
+      "restore_cancel_btn": "取消",
+      "restore_success_toast": "记忆恢复成功，新路径：{{uri}}",
+      "restore_failed_toast": "恢复记忆失败：{{error}}"
     },
     "select": {
       "deselect_all": "取消全选",

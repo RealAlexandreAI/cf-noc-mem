@@ -102,3 +102,32 @@ async def clear_access_logs(req: ClearLogsRequest):
             
         result = await session.execute(stmt)
         return {"deleted": result.rowcount}
+
+
+class RestoreOrphanRequest(BaseModel):
+    new_domain: str = "core"
+    new_path: str
+    priority: int = 0
+    disclosure: Optional[str] = None
+
+
+@router.post("/orphans/{memory_id}/restore")
+async def restore_orphan(memory_id: int, req: RestoreOrphanRequest):
+    """
+    Restore an orphan or deprecated memory by assigning a new path and
+    activating it (deprecated=False).
+    """
+    graph = get_graph_service()
+    try:
+        result = await graph.restore_orphan_memory(
+            memory_id=memory_id,
+            new_path=req.new_path,
+            new_domain=req.new_domain,
+            priority=req.priority,
+            disclosure=req.disclosure,
+            namespace=get_namespace(),
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+

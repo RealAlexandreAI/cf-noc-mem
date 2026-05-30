@@ -386,7 +386,19 @@
       "error_prefix": "Error: {{error}}",
       "old_version": "Old Version (this memory)",
       "full_content": "Full Content",
-      "diff_header": "Diff: #{{fromId}} → #{{toId}}"
+      "diff_header": "Diff: #{{fromId}} → #{{toId}}",
+      "restore_btn": "Restore Memory",
+      "restore_title": "Restore Memory Configuration",
+      "restore_domain_label": "Domain",
+      "restore_path_label": "Target Path",
+      "restore_parent_placeholder": "Select parent path",
+      "restore_leaf_placeholder": "New segment name",
+      "restore_disclosure_placeholder": "Enter trigger condition (Disclosure)",
+      "restore_priority_label": "Priority",
+      "restore_confirm_btn": "Confirm Restore",
+      "restore_cancel_btn": "Cancel",
+      "restore_success_toast": "Memory restored successfully at {{uri}}",
+      "restore_failed_toast": "Failed to restore memory: {{error}}"
     },
     "select": {
       "deselect_all": "Deselect All",
