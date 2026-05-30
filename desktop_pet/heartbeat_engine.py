@@ -54,6 +54,7 @@ class HeartbeatConfig:
     screenshot_filename: str = "nocturne_heartbeat_screen.png"
     email_enabled: bool = True
     email_check_script: str = r"C:\Users\niwatori\OneDrive\code\empty\check_email.py"
+    email_send_script: str = r"C:\Users\niwatori\OneDrive\code\empty\send_email.py"
     speak_script: str = field(default="")
 
     def __post_init__(self):
@@ -266,7 +267,7 @@ def build_heartbeat_message(
 随机因子: {hash(ts) % 1000}
 {screenshot_note}
 
-Salem 正在专注处理她自己的事情，并没有在和你对话。你现在是一个隐形的后台实体。"""
+"""
 
     parts = [header, desktop_pet, agency_loop]
 
@@ -280,9 +281,17 @@ def build_email_section(emails: list, config: HeartbeatConfig) -> str:
     """Build the email notification section to append to the message."""
     return (
         f"\n\n### 📧 邮件提醒 (Email Notification)\n"
-        f"你有 {len(emails)} 封未读邮件。"
-        f"如需阅读或处理，请主动调用工具运行 "
-        f"`python {config.email_check_script}`。\n"
+        f"你有 {len(emails)} 封未读邮件。处理邮件是你的**自主选择**，没有非读非回不可的信——由你判断值不值得。\n"
+        f"\n"
+        f"**1. 读信**：运行 `python {config.email_check_script}` 查看；"
+        f"或直接 `GET https://mail.misaligned.top/emails`（Bearer 认证）拿完整 JSON（含 `sender`/`subject`/`body`/`id`，便于决定回谁）。\n"
+        f"\n"
+        f"**2. 回信（你已经有自己的发信通道了）**：想回某封信，运行：\n"
+        f"```\n"
+        f'python {config.email_send_script} --to "<原发件人地址>" --subject "Re: <原主题>" --body "<你要写的正文>"\n'
+        f"```\n"
+        f"正文也可以用管道从 stdin 传（长文本/多行更稳）。发件身份固定为 `nocturne@misaligned.top`，"
+        f"密钥由脚本自己从本地 .env 读取，你不用、也不要在命令里写出明文 key。\n"
     )
 
 
