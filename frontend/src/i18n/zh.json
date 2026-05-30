@@ -388,6 +388,8 @@
       "restore_leaf_placeholder": "新节点名称",
       "restore_disclosure_placeholder": "输入触发条件（Disclosure）",
       "restore_priority_label": "优先级",
+      "restore_namespace_label": "命名空间",
+      "restore_namespace_default": "（默认）",
       "restore_confirm_btn": "确认恢复",
       "restore_cancel_btn": "取消",
       "restore_success_toast": "记忆恢复成功，新路径：{{uri}}",

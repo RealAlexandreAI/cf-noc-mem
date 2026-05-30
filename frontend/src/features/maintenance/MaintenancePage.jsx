@@ -9,7 +9,7 @@ import DiffViewer from '../../components/DiffViewer';
 import { toast } from '../../components/Toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import PromptModal from '../../components/PromptModal';
-import { api } from '../../lib/api';
+import { api, getNamespaces } from '../../lib/api';
 import { useLocale } from '../../i18n/useLocale';
 
 export default function MaintenancePage() {
@@ -796,14 +796,25 @@ const RestoreForm = ({ memoryId, onCancel, onSuccess }) => {
   const [leafName, setLeafName] = useState('');
   const [disclosure, setDisclosure] = useState('');
   const [priority, setPriority] = useState(0);
+  const [namespace, setNamespace] = useState(
+    () => localStorage.getItem('selected_namespace') ?? ''
+  );
+  const [knownNamespaces, setKnownNamespaces] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [loadingLevel, setLoadingLevel] = useState(-1);
 
+  useEffect(() => {
+    getNamespaces()
+      .then(nsList => setKnownNamespaces(nsList.filter(ns => ns !== '')))
+      .catch(() => setKnownNamespaces([]));
+  }, []);
+
   const fetchChildren = async (parentPath, currentDomain) => {
     try {
       const res = await api.get('/browse/node', {
-        params: { domain: currentDomain, path: parentPath, nav_only: true }
+        params: { domain: currentDomain, path: parentPath, nav_only: true },
+        headers: { 'X-Namespace': namespace.trim() },
       });
       return (res.data.children || []).map(c => c.path.split('/').pop());
     } catch {
@@ -820,7 +831,7 @@ const RestoreForm = ({ memoryId, onCancel, onSuccess }) => {
       setChildrenByLevel([names]);
       setLoadingLevel(-1);
     });
-  }, [domain]);
+  }, [domain, namespace]);
 
   const handleSegmentChange = async (level, value) => {
     if (value === '') {
@@ -859,13 +870,13 @@ const RestoreForm = ({ memoryId, onCancel, onSuccess }) => {
         new_path: fullPath,
         priority: priority,
         disclosure: disclosure.trim() || undefined,
+        namespace: namespace.trim() || '',
       });
       toast(t('maintenance.detail.restore_success_toast', { uri: `${domain}://${fullPath}` }), 'success');
       onSuccess();
     } catch (err) {
       const errMsg = err.response?.data?.detail || err.message;
       setError(t('maintenance.detail.restore_failed_toast', { error: errMsg }));
-      toast(t('maintenance.detail.restore_failed_toast', { error: errMsg }), 'error');
     } finally {
       setSaving(false);
     }
@@ -924,6 +935,26 @@ const RestoreForm = ({ memoryId, onCancel, onSuccess }) => {
               className="px-2 py-1 bg-[#06060B] border border-indigo-500/30 rounded text-indigo-300 text-xs font-mono focus:outline-none focus:border-indigo-500/50 w-36"
             />
           </div>
+        </div>
+
+        {/* Namespace Selector */}
+        <div className="space-y-1.5">
+          <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-500">
+            {t('maintenance.detail.restore_namespace_label')}
+          </label>
+          <select
+            value={namespace}
+            onChange={e => setNamespace(e.target.value)}
+            className="w-full px-2.5 py-1.5 bg-[#06060B] border border-slate-700/60 rounded text-indigo-300 text-xs font-mono focus:outline-none focus:border-indigo-500/50"
+          >
+            <option value="">{t('maintenance.detail.restore_namespace_default')}</option>
+            {knownNamespaces.map(ns => (
+              <option key={ns} value={ns}>{ns}</option>
+            ))}
+            {namespace && !knownNamespaces.includes(namespace) && (
+              <option key={namespace} value={namespace}>{namespace}</option>
+            )}
+          </select>
         </div>
 
         {/* Priority & Disclosure in parallel */}

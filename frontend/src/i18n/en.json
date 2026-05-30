@@ -395,6 +395,8 @@
       "restore_leaf_placeholder": "New segment name",
       "restore_disclosure_placeholder": "Enter trigger condition (Disclosure)",
       "restore_priority_label": "Priority",
+      "restore_namespace_label": "Namespace",
+      "restore_namespace_default": "(default)",
       "restore_confirm_btn": "Confirm Restore",
       "restore_cancel_btn": "Cancel",
       "restore_success_toast": "Memory restored successfully at {{uri}}",
