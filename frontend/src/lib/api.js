@@ -58,6 +58,12 @@ export const clearAll = () =>
 export const getDomains = () =>
   api.get('/browse/domains').then(res => res.data);
 
+export const addDomain = (domain) =>
+  api.post('/browse/domains', { domain }).then(res => res.data);
+
+export const removeDomain = (domain) =>
+  api.delete(`/browse/domains/${encodeURIComponent(domain)}`).then(res => res.data);
+
 export const getNamespaces = () =>
   api.get('/browse/namespaces').then(res => res.data);
 

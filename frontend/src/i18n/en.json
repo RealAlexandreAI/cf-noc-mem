@@ -144,6 +144,7 @@
     "domains": {
       "validation_error": "Domain names must start with a letter and can only contain lowercase letters, numbers, and underscores.",
       "core_remove_error": "The \"core\" domain cannot be removed.",
+      "domain_in_use_error": "Domain is not empty. It contains memories in some namespace. Please process them first before deleting the domain globally.",
       "placeholder": "New domain",
       "add": "Add",
       "restart_warning": "Server restart required to apply changes",
@@ -185,6 +186,17 @@
   },
 
   "memory": {
+    "domains": {
+      "already_exists": "Domain already exists",
+      "add_success": "Domain added successfully",
+      "delete_success": "Domain deleted successfully",
+      "delete_domain": "Delete Domain",
+      "delete_confirm_title": "Confirm Delete Domain",
+      "delete_confirm_warning": "This domain will be removed from your valid domains configuration.",
+      "delete_confirm_message": "Are you sure you want to delete this domain? Active memories under this domain might become inaccessible unless the domain is added back.",
+      "add_domain": "Add Domain",
+      "add_domain_placeholder": "New domain..."
+    },
     "sidebar": {
       "title": "Memory Core",
       "subtitle": "Neural Explorer v2.0",

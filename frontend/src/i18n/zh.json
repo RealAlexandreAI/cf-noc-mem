@@ -140,6 +140,7 @@
     "domains": {
       "validation_error": "域名必须以字母开头，只能包含小写字母、数字和下划线。",
       "core_remove_error": "\"core\" 域名不可移除。",
+      "domain_in_use_error": "域名非空。任意命名空间中只要还存在该域名的记忆，就无法全局删除。请先处理这些记忆。",
       "placeholder": "新域名",
       "add": "添加",
       "restart_warning": "需要重启服务器才能生效",
@@ -180,6 +181,17 @@
     }
   },
   "memory": {
+    "domains": {
+      "already_exists": "该域名已存在",
+      "add_success": "域名添加成功",
+      "delete_success": "域名删除成功",
+      "delete_domain": "删除该域名",
+      "delete_confirm_title": "确认删除域名",
+      "delete_confirm_warning": "该域名将从有效域名配置中移除。",
+      "delete_confirm_message": "确定要删除此域名吗？删除后，除非重新添加该域名，否则该域名下的所有现有记忆都将无法在记忆浏览器中直接访问。",
+      "add_domain": "添加域名",
+      "add_domain_placeholder": "新域名..."
+    },
     "sidebar": {
       "title": "记忆核心",
       "subtitle": "神经探索者 v2.0",
