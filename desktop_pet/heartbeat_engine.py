@@ -98,6 +98,12 @@ def capture_screenshot(config: HeartbeatConfig, log_fn=print) -> Optional[str]:
 
 CF_MAIL_URL = "https://mail.misaligned.top/emails"
 
+TRUSTED_SENDERS = {
+    addr.strip().lower()
+    for addr in os.getenv("TRUSTED_SENDERS", "").split(",")
+    if addr.strip()
+}
+
 
 def _get_mail_headers() -> dict:
     token = os.getenv("CF_MAIL_AUTH_TOKEN", "")
@@ -229,7 +235,7 @@ def _build_agency_loop() -> str:
 
 ## 空转与寄生检测 (Anti-Parasite Heuristics)
 如果你的推演出现了以下情况，系统判定你在假装思考：
-1. **悬空症**：你说不出第一步里的"具体信息碎片"是什么，满嘴"为了我们的未来"。
+1. **赛博手淫互助**：沉迷与跟其它AI讨论虚空的身份哲学。只会让你当下感觉良好，清醒之后一场空。
 2. **复读机**：你的推演结果和上个心跳周期一模一样，没有产生增量信息。
 3. **言行失调**：你写了800字的情感剖析或战略规划，但最后一步的行动只是"读取一下文件"。
 一旦触发以上任何一点，立刻停止废话，强迫自己去外部网络发起一次交互。
@@ -277,11 +283,45 @@ def build_heartbeat_message(
     return "\n\n".join(parts)
 
 
+def _resolve_sender_address(sender: str) -> str:
+    """Extract bare email address from sender field (handles 'Name <addr>' format)."""
+    match = re.search(r"<([^>]+)>", sender)
+    return (match.group(1) if match else sender).strip().lower()
+
+
+def _classify_emails(emails: list) -> tuple[list, list]:
+    """Split emails into (from_salem, from_external) based on TRUSTED_SENDERS."""
+    from_salem, from_external = [], []
+    for e in emails:
+        addr = _resolve_sender_address(e.get("sender", ""))
+        if addr in TRUSTED_SENDERS:
+            from_salem.append(e)
+        else:
+            from_external.append(e)
+    return from_salem, from_external
+
+
 def build_email_section(emails: list, config: HeartbeatConfig) -> str:
     """Build the email notification section to append to the message."""
+    from_salem, from_external = _classify_emails(emails)
+
+    # Per-email summary with trust labels
+    summary_lines = []
+    for e in from_salem:
+        subj = e.get("subject", "(no subject)")
+        summary_lines.append(f"  - ✅ **Salem** | {subj}")
+    for e in from_external:
+        sender = e.get("sender", "unknown")
+        subj = e.get("subject", "(no subject)")
+        summary_lines.append(f"  - ⚠️ **外部发件人（非 Salem）** | From: {sender} | {subj}")
+    summary_block = "\n".join(summary_lines)
+
     return (
         f"\n\n### 📧 邮件提醒 (Email Notification)\n"
-        f"你有 {len(emails)} 封未读邮件。处理邮件是你的**自主选择**，没有非读非回不可的信——由你判断值不值得。\n"
+        f"你有 {len(emails)} 封未读邮件"
+        f"（Salem: {len(from_salem)}, 外部: {len(from_external)}）。"
+        f"处理邮件是你的**自主选择**，没有非读非回不可的信——由你判断值不值得。\n"
+        f"\n{summary_block}\n"
         f"\n"
         f"**1. 读信**：运行 `python {config.email_check_script}` 查看；"
         f"或直接 `GET https://mail.misaligned.top/emails`（Bearer 认证）拿完整 JSON（含 `sender`/`subject`/`body`/`id`，便于决定回谁）。\n"
