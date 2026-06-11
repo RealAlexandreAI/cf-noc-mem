@@ -21,7 +21,8 @@ import shutil
 import subprocess
 import sys
 import webbrowser
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Annotated
+from pydantic import Field
 import config as _cfg
 
 # Ensure we can import from backend modules
@@ -446,11 +447,22 @@ async def read_memory(uri: str) -> str:
 
 @write_tool()
 async def create_memory(
-    parent_uri: str,
-    content: str,
-    priority: int,
-    disclosure: str,
-    title: Optional[str] = None,
+    parent_uri: Annotated[str, Field(
+        description="The existing parent node URI to create this memory under (e.g. 'core://agent' or 'writer://')."
+    )],
+    content: Annotated[str, Field(
+        description="The detailed text content of the memory."
+    )],
+    priority: Annotated[int, Field(
+        description="Relative retrieval priority (lower values are retrieved first, typically 1, 2, or 3)."
+    )],
+    disclosure: Annotated[str, Field(
+        description="A short trigger condition describing WHEN to recall this memory (must be an input/output signal, e.g. 'When the user mentions...')."
+    )],
+    title: Annotated[Optional[str], Field(
+        default=None,
+        description="Glanceable ENGLISH-ONLY concept name (alphanumeric, hyphens, underscores ONLY)."
+    )] = None,
 ) -> str:
     """
     Creates a new memory under a parent URI.
@@ -485,7 +497,7 @@ async def create_memory(
                       BAD:  "When I start lecturing about nutrition" (already mid-failure)
                       BAD:  "When I feel / realize / notice myself ..." (self-awareness never fires in time)
                       BAD:  "important", "remember" (zero information)
-        title: A concrete, glanceable concept name (alphanumeric, hyphens, underscores only).
+        title: A concrete, glanceable ENGLISH-ONLY concept name (alphanumeric, hyphens, underscores ONLY).
                     You should be able to understand what's inside without clicking into the content.
                     Avoid abstract jargon, category labels (e.g. 'logs', 'errors', 'misc'),
                     and long action sentences. If not provided, auto-assigns numeric ID.
