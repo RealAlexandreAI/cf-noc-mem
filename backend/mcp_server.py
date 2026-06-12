@@ -454,6 +454,7 @@ async def create_memory(
         description="The detailed text content of the memory."
     )],
     priority: Annotated[int, Field(
+        ge=0,
         description="Relative retrieval priority (lower values are retrieved first, typically 1, 2, or 3)."
     )],
     disclosure: Annotated[str, Field(
@@ -512,6 +513,9 @@ async def create_memory(
     graph = get_graph_service()
 
     try:
+        if priority < 0:
+            return "Error: priority must be >= 0."
+
         # Validate disclosure (required, non-empty)
         if not disclosure or not disclosure.strip():
             return (
@@ -609,6 +613,9 @@ async def update_memory(
     graph = get_graph_service()
 
     try:
+        if priority is not None and priority < 0:
+            return "Error: priority must be >= 0."
+
         notices: List[str] = []
 
         # Parse URI
@@ -862,6 +869,9 @@ async def add_alias(
     graph = get_graph_service()
 
     try:
+        if priority < 0:
+            return "Error: priority must be >= 0."
+
         new_domain, new_path = parse_uri(new_uri)
         target_domain, target_path = parse_uri(target_uri)
 
