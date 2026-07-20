@@ -460,10 +460,10 @@ async def create_memory(
     disclosure: Annotated[str, Field(
         description="A short trigger condition describing WHEN to recall this memory (must be an input/output signal, e.g. 'When the user mentions...')."
     )],
-    title: Annotated[Optional[str], Field(
+    title: Annotated[str, Field(
         default=None,
         description="Glanceable ENGLISH-ONLY concept name (alphanumeric, hyphens, underscores ONLY)."
-    )] = None,
+    )],
 ) -> str:
     """
     Creates a new memory under a parent URI.
