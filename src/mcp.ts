@@ -18,6 +18,7 @@ import {
   systemRecent,
   updateMemory,
 } from "./db";
+import { deleteMemoryVector, hybridSearch, upsertMemoryVector } from "./vector";
 
 export const PROTOCOL_VERSION = "2025-06-18";
 const SERVER_NAME = "cf-noc-mem";
@@ -256,6 +257,7 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
         expiresAt: args.expires_at == null ? null : String(args.expires_at),
         maxContentBytes: maxContentBytes(env),
       });
+      await upsertMemoryVector(env, r.uri, args.title == null ? null : String(args.title), r.content, Number(args.priority ?? 0));
       return `Created: ${r.uri} (audit ${r.audit_id})\n\n${r.content}`;
     }
     case "update_memory": {
@@ -271,10 +273,14 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
         relation: args.relation == null ? null : String(args.relation),
         maxContentBytes: maxContentBytes(env),
       });
+      if (r)
+        await upsertMemoryVector(env, r.uri, null, r.content, r.priority);
       return r ? `Updated: ${r.uri} (audit ${r.audit_id})\n\n${r.content}` : "Memory not found.";
     }
     case "delete_memory": {
       const r = await deleteMemory(db, String(args.uri ?? ""));
+      if (r.deleted)
+        await deleteMemoryVector(env, String(args.uri ?? ""));
       return r.deleted ? `${r.message} (audit ${r.audit_id})\n${r.orphanChildren.length ? `Orphaned children: ${r.orphanChildren.join(", ")}` : ""}`.trim() : `${r.message}${r.orphanChildren.length ? `\nOrphaned children: ${r.orphanChildren.join(", ")}` : ""}`;
     }
     case "add_alias": {
@@ -288,7 +294,7 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
       return r ? `Alias created: ${r.uri}\n\n${r.content}` : "Alias failed: target not found or path exists.";
     }
     case "search_memory": {
-      const hits = await searchMemory(db, String(args.query ?? ""), Number(args.limit ?? 20));
+      const hits = await hybridSearch(env, String(args.query ?? ""), Number(args.limit ?? 20));
       if (hits.length === 0) return "(no results)";
       return `[${hits.length} hits]\n` + hits.map((h) => `${h.uri} [p${h.priority}]\n${h.snippet}`).join("\n\n");
     }
@@ -313,6 +319,13 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
     }
     case "rename_memory": {
       const r = await renameNode(db, String(args.uri ?? ""), String(args.new_name ?? ""));
+      if (r) {
+        // URI changed — move the vector to the new id (re-embed from current content).
+        await deleteMemoryVector(env, String(args.uri ?? ""));
+        const cur = await readMemory(db, r.uri, "mcp");
+        if (cur)
+          await upsertMemoryVector(env, r.uri, null, cur.content, cur.priority);
+      }
       return r ? `Renamed to: ${r.uri}` : "Rename failed: not found or empty name.";
     }
     case "list_audit": {

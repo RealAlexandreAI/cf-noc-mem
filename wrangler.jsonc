@@ -3,7 +3,9 @@
   "name": "cf-noc-mem",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "migrations": [
     {
       "new_sqlite_classes": [],
@@ -14,9 +16,6 @@
     {
       "binding": "DB",
       "database_name": "noc_mem",
-      // your own database_id from `npx wrangler d1 create noc_mem`.
-      // For local deploy with real ids, copy this file to wrangler.local.jsonc
-      // (gitignored) and fill in the values, then deploy with --config wrangler.local.jsonc
       "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
     }
   ],
@@ -37,16 +36,25 @@
   },
   "routes": [
     {
-      // your own domain (or remove this block for *.workers.dev).
-      // Local deploy: copy to wrangler.local.jsonc (gitignored) and fill in.
       "pattern": "REPLACE_WITH_YOUR_DOMAIN",
       "custom_domain": true
     }
   ],
   "triggers": {
-    "crons": ["0 3 * * *"]
+    "crons": [
+      "0 3 * * *"
+    ]
   },
   "observability": {
     "enabled": true
-  }
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "noc-mem-vec"
+    }
+  ]
 }

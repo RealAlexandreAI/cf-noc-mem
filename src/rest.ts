@@ -14,6 +14,7 @@ import {
   dbStatus,
   manageTriggers,
 } from "./db";
+import { hybridSearch } from "./vector";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -144,7 +145,7 @@ export async function handleRest(req: Request, url: URL, env: Env): Promise<Resp
       }
     }
     if (sub === "search") {
-      const hits = await searchMemory(env.DB, q("q"), Number(q("limit") || 20));
+      const hits = await hybridSearch(env, q("q"), Number(q("limit") || 20));
       // upstream shape: { results: [...] } — frontend reads res.results
       return json({ results: hits });
     }

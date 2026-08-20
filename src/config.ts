@@ -4,6 +4,10 @@ export interface Env {
   ASSETS: Fetcher;
   API_TOKEN: string;
   MCP_MAX_CONTENT_BYTES?: string;
+  /** Workers AI binding (required for semantic search embeddings). */
+  AI: Ai;
+  /** Optional Vectorize index — when absent, search degrades to FTS-only. */
+  VECTORIZE?: VectorizeIndex;
 }
 
 export function maxContentBytes(env: Env): number {
