@@ -1,7 +1,9 @@
 import { Env } from "./config";
 
 export const ROOT_NODE = "00000000-0000-0000-0000-000000000000";
-export const DEFAULT_DOMAIN = "core";
+// Single-user build: the memory tree IS the memory. No namespaces, no
+// multi-tenant domains — everything lives under one "noc" domain.
+export const DEFAULT_DOMAIN = "noc";
 
 export interface ParsedUri {
   domain: string;

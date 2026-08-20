@@ -38,10 +38,9 @@ import {
 } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
 
-// Single-user build: domain is always "core". Multi-domain/namespace is an
-// upstream multi-tenant concept we trimmed — search/graph algorithms don't
-// depend on it, only the URI prefix does.
-const DOMAIN = 'core';
+// Single-user build: everything lives under the "noc" domain — the memory
+// tree IS the memory, no namespaces.
+const DOMAIN = 'noc';
 
 export default function MemoryBrowser() {
   const [searchParams, setSearchParams] = useSearchParams();

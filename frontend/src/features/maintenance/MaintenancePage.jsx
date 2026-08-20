@@ -791,7 +791,7 @@ export default function MaintenancePage() {
 
 const RestoreForm = ({ memoryId, onCancel, onSuccess }) => {
   const { t } = useLocale();
-  const [domain, setDomain] = useState('core');
+  const domain = 'noc';
   const [pathSegments, setPathSegments] = useState([]);
   const [childrenByLevel, setChildrenByLevel] = useState([[]]);
   const [leafName, setLeafName] = useState('');
@@ -885,15 +885,7 @@ const RestoreForm = ({ memoryId, onCancel, onSuccess }) => {
             {t('maintenance.detail.restore_path_label')}
           </label>
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={domain}
-              onChange={e => setDomain(e.target.value)}
-              className="px-2 py-1 bg-[#06060B] border border-slate-700/60 rounded text-slate-300 text-xs font-mono focus:outline-none focus:border-indigo-500/50"
-            >
-              <option value="core">core</option>
-              <option value="writer">writer</option>
-              <option value="project">project</option>
-            </select>
+            <span className="px-2 py-1 bg-[#06060B] border border-slate-700/60 rounded text-indigo-300 text-xs font-mono select-all">noc</span>
             <span className="text-slate-500 font-mono text-xs">://</span>
 
             {childrenByLevel.map((options, level) => (

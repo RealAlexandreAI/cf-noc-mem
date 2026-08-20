@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { ShieldCheck, Database, LayoutGrid, Sparkles, AlertCircle, Languages } from 'lucide-react';
+import { ShieldCheck, Database, LayoutGrid, AlertCircle, Languages } from 'lucide-react';
 import clsx from 'clsx';
 
 import ReviewPage from './features/review/ReviewPage';
@@ -28,10 +28,11 @@ const consumeTokenFromUrl = () => {
   return true;
 };
 
+// Maintenance (brain cleanup) is fully automated server-side (autoForget cron);
+// the manual UI was removed. The route stays reachable as an escape hatch.
 const NAV_ITEMS = [
   { to: '/review', icon: ShieldCheck, key: 'app.nav.review' },
   { to: '/memory', icon: Database, key: 'app.nav.memory' },
-  { to: '/maintenance', icon: Sparkles, key: 'app.nav.maintenance' },
 ];
 
 function Layout() {

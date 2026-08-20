@@ -28,7 +28,7 @@ const TOOLS: ToolDef[] = [
       "Reads a memory by URI. Special system URIs: system://boot (core memories), system://index/<domain>, system://recent[/N].",
     inputSchema: {
       type: "object",
-      properties: { uri: { type: "string", description: "Memory URI, e.g. core://agent/foo or system://recent/5" } },
+      properties: { uri: { type: "string", description: "Memory URI, e.g. noc://agent/foo or system://recent/5" } },
       required: ["uri"],
     },
   },
@@ -38,7 +38,7 @@ const TOOLS: ToolDef[] = [
     inputSchema: {
       type: "object",
       properties: {
-        parent_uri: { type: "string", description: "Parent node URI, e.g. core://agent" },
+        parent_uri: { type: "string", description: "Parent node URI, e.g. noc://agent" },
         content: { type: "string", description: "Detailed text content of the memory" },
         priority: { type: "integer", minimum: 0, description: "Retrieval priority, lower first (1,2,3)" },
         disclosure: { type: "string", description: "Optional disclosure note" },
