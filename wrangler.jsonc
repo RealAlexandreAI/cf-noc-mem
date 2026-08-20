@@ -14,6 +14,7 @@
     {
       "binding": "DB",
       "database_name": "noc_mem",
+      // replace with your own database_id from `npx wrangler d1 create noc_mem`
       "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
     }
   ],
@@ -34,6 +35,7 @@
   },
   "routes": [
     {
+      // replace with your own domain (or remove for *.workers.dev)
       "pattern": "REPLACE_WITH_YOUR_DOMAIN",
       "custom_domain": true
     }

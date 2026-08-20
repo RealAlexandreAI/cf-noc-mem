@@ -2,7 +2,7 @@
   "name": "cf-noc-mem",
   "version": "0.1.0",
   "private": true,
-  "description": "nocturne_memory, but on Cloudflare: stateless MCP memory server on Workers + D1 + R2",
+  "description": "Stateless single-user MCP memory server on Cloudflare Workers (D1 + R2). Fork of nocturne_memory, serverless.",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
@@ -14,5 +14,10 @@
     "@cloudflare/workers-types": "^5.20260820.1",
     "typescript": "^5.5.0",
     "wrangler": "^4.124.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RealAlexandreAI/cf-noc-mem.git"
+  },
+  "license": "MIT"
 }
