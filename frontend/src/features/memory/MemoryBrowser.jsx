@@ -209,7 +209,7 @@ export default function MemoryBrowser() {
   };
 
   const handleBootToggle = async (uri) => {
-    const isCurrentlyInBoot = bootUris.includes(uri);
+    const isCurrentlyInBoot = (bootUris || []).includes(uri);
     try {
       const result = await toggleSettingsBootUri(uri, !isCurrentlyInBoot);
       setBootUris(result.uris);
@@ -579,15 +579,15 @@ export default function MemoryBrowser() {
                                     {!editing && (
                                         <button
                                             onClick={() => handleBootToggle(currentUri)}
-                                            title={bootUris.includes(currentUri) ? t('memory.boot.remove') : t('memory.boot.add')}
+                                            title={(bootUris || []).includes(currentUri) ? t('memory.boot.remove') : t('memory.boot.add')}
                                             className={clsx(
                                                 "flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-all border",
-                                                bootUris.includes(currentUri)
+                                                (bootUris || []).includes(currentUri)
                                                     ? "bg-amber-950/40 border-amber-700/50 text-amber-400 hover:bg-amber-950/60 hover:border-amber-600/60 shadow-[0_0_12px_rgba(245,158,11,0.1)]"
                                                     : "bg-slate-800 border-slate-700 text-slate-500 hover:text-amber-400 hover:border-amber-800/40 hover:bg-slate-800/80"
                                             )}
                                         >
-                                            <Zap size={15} className={bootUris.includes(currentUri) ? "fill-amber-400" : ""} />
+                                            <Zap size={15} className={(bootUris || []).includes(currentUri) ? "fill-amber-400" : ""} />
                                             {t('memory.boot.label')}
                                         </button>
                                     )}
@@ -701,7 +701,7 @@ export default function MemoryBrowser() {
                                         key={`${child.domain || domain}:${child.path}`} 
                                         node={child}
                                         currentDomain={domain}
-                                        isInBoot={bootUris.includes(child.uri)}
+                                        isInBoot={(bootUris || []).includes(child.uri)}
                                         onBootToggle={() => handleBootToggle(child.uri)}
                                         onClick={() => navigateTo(child.path, child.domain)} 
                                     />

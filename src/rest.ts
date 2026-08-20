@@ -168,7 +168,7 @@ export async function handleRest(req: Request, url: URL, env: Env): Promise<Resp
       if (method === "GET") return json({});
       return bad("not supported");
     }
-    if (parts[1] === "boot-uris") return json([]);
+    if (parts[1] === "boot-uris") return json({ uris: [] });
     if (parts[1] === "database" && parts[2] === "status" && method === "GET") {
       return json(await dbStatus(env.DB, env.SNAPSHOTS));
     }

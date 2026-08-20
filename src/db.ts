@@ -401,13 +401,12 @@ export async function searchMemory(db: D1Database, query: string, limit: number 
 
   let rows: SearchHit[] = [];
   if (q.length >= 3) {
-    // trigram: quote the phrase, FTS5 adds prefix matching per window
+    // trigram: quote the phrase; FTS table stores uri/content directly (no rowid join)
     rows = await db
       .prepare(
-        `SELECT sd.uri, sd.node_uuid, sd.memory_id, sd.priority, substr(sd.content, 1, 200) AS snippet
-         FROM search_fts f JOIN search_documents sd ON f.rowid = sd.rowid
-         WHERE search_fts MATCH ?
-         ORDER BY sd.priority ASC, sd.updated_at DESC
+        `SELECT uri, '' AS node_uuid, 0 AS memory_id, CAST(search_terms AS INTEGER) AS priority, substr(content, 1, 200) AS snippet
+         FROM search_fts WHERE search_fts MATCH ?
+         ORDER BY rowid
          LIMIT ?`
       )
       .bind(`"${q.replace(/"/g, "")}"`, limit)
@@ -415,7 +414,7 @@ export async function searchMemory(db: D1Database, query: string, limit: number 
       .then((r) => r.results ?? []);
   }
 
-  if (!rows || rows.length === 0) {
+  if (rows.length === 0) {
     // short query or FTS miss -> LIKE fallback over uri + content
     const like = `%${q}%`;
     rows = await db
