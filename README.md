@@ -69,15 +69,16 @@ npx wrangler deploy                   # set API_TOKEN via wrangler secret put
 |----------|----------------------|------------------|
 | `/mcp` | **Bearer** `Authorization: Bearer $API_TOKEN` (required) | keep Bearer; or migrate to OAuth 2.1 + PKCE later |
 | `/admin/*` | **Bearer** (same token) | **Cloudflare Access** — protect `/admin/*` as an Access application; the Worker trusts the `Cf-Access-Authenticated-User-Email` header and skips Bearer |
+| `/` (web panel) | public HTML shell — **no data in the page**; every read goes through `/mcp` with Bearer | same Access application covering `/*`; the panel then requires login like admin |
 
-The admin check is dual-mode: if Cloudflare Access validated the request (header present, injected by the edge — clients cannot forge it), it passes; otherwise it falls back to Bearer. No extra env needed.
+The admin/panel check is dual-mode: if Cloudflare Access validated the request (header present, injected by the edge — clients cannot forge it), it passes; otherwise it falls back to Bearer. No extra env needed.
+
+**For personal use, cover the whole domain**: Zero Trust → Access → Applications → `https://REPLACE_WITH_YOUR_DOMAIN/*` → policy = your identity group/email. Both the panel and admin then sit behind your login; `/mcp` stays Bearer-only so agents keep working.
 
 Set the token:
 ```bash
 echo -n "$(openssl rand -hex 24)" | npx wrangler secret put API_TOKEN
 ```
-
-To enable Access for personal use: Zero Trust → Access → Applications → add `https://REPLACE_WITH_YOUR_DOMAIN/admin/*` → policy = your identity group/email. `/mcp` stays Bearer-only so agents keep working.
 
 ## Privacy
 
