@@ -41,10 +41,25 @@ export default {
     // Web panel lives under /admin so one Access app ("/admin") protects
     // both the UI and admin API, leaving /mcp outside any Access app.
     if ((url.pathname === "/admin" || url.pathname === "/admin/") && req.method === "GET") {
-      // Inject auth mode: "access" when Cloudflare Access validated this browser,
-      // else "bearer" (the panel asks for a token).
+      // Server-render the mode banner + (if Access) pre-load boot data,
+      // so the page is useful even if client JS errors out.
       const accessOk = !!req.headers.get("Cf-Access-Authenticated-User-Email");
-      const html = UI_HTML.replace("__AUTH_MODE__", accessOk ? "access" : "bearer");
+      const bootText = accessOk ? await systemBoot(env.DB) : null;
+      const html = UI_HTML
+        .replaceAll("__AUTH_MODE__", accessOk ? "access" : "bearer")
+        .replace("__STATUS_TEXT__", accessOk ? "access verified" : "bearer required")
+        .replace("__STATUS_CLASS__", accessOk ? " ok" : "")
+        .replace(
+          "__AUTH_ZONE_HTML__",
+          accessOk
+            ? '<div class="auth-banner"><span class="ok">&#9679;</span> authenticated via Cloudflare Access</div>'
+            : '<div class="token-form">' +
+              '<div class="field"><label for="tok">API token</label><input id="tok" type="password" placeholder="enter token" autocomplete="off" value="' + (env.API_TOKEN ? "" : "") + '"></div>' +
+              '<button class="btn" id="tokGo">Unlock</button>' +
+              '<div class="hint">no token? wrangler secret put API_TOKEN. or protect this page with Cloudflare Access.</div>' +
+              '</div>'
+        )
+        .replace("__BOOT_DATA__", bootText === null ? "null" : JSON.stringify(bootText));
       return new Response(html, {
         headers: {
           "content-type": "text/html; charset=utf-8",

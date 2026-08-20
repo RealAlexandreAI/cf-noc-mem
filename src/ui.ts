@@ -1,6 +1,11 @@
-// Read-only memory browser panel. Linear-style dark, single file, no deps.
-// Auth: "access" (CF Access validated, worker injected) or "bearer" (token input).
-// All reads go through /admin/boot and /admin/search (Access or Bearer).
+// Read-only memory browser. Linear-style dark, single file, no deps.
+// Server renders mode banner + boot data; JS handles only search interaction.
+// Placeholders (replaced by worker on each request):
+//   __AUTH_MODE__   "access" | "bearer"
+//   __STATUS_TEXT__ "access verified" | "bearer required"
+//   __STATUS_CLASS__ " ok" | ""
+//   __AUTH_ZONE_HTML__  pre-rendered banner or token form
+//   __BOOT_DATA__   JSON-encoded boot text, or the literal "null"
 export const UI_HTML = `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -56,7 +61,6 @@ export const UI_HTML = `<!DOCTYPE html>
   .status { font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: 8px; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
   .dot.ok { background: var(--green); }
-  .dot.err { background: var(--red); }
   .field label { display: block; font-size: 11px; color: var(--text-3); margin-bottom: 6px; }
   .field input {
     width: 100%; background: var(--panel-2); color: var(--text);
@@ -123,8 +127,8 @@ export const UI_HTML = `<!DOCTYPE html>
         <div class="brand-sub">memory on cloudflare</div>
       </div>
     </div>
-    <div class="status" id="status"><span class="dot" id="statusDot"></span><span id="statusText">checking</span></div>
-    <div id="authZone"></div>
+    <div class="status"><span class="dot__STATUS_CLASS__"></span><span id="statusText">__STATUS_TEXT__</span></div>
+    <div id="authZone">__AUTH_ZONE_HTML__</div>
     <div class="hint">boot memories and full-text search. data stays in D1.</div>
   </aside>
   <main>
@@ -142,32 +146,33 @@ var TOK = localStorage.getItem("nm-token") || "";
 var OUT = document.getElementById("out");
 var Q = document.getElementById("q");
 var SECTION = document.getElementById("sectionLabel");
-var STATUS_DOT = document.getElementById("statusDot");
-var STATUS_TEXT = document.getElementById("statusText");
-var AUTH_ZONE = document.getElementById("authZone");
+var BOOT = __BOOT_DATA__;
+if (BOOT !== null) renderBoot(BOOT);
+else skeleton();
 
-function setStatus(ok, text) {
-  STATUS_DOT.className = "dot" + (ok ? " ok" : " err");
-  STATUS_TEXT.textContent = text;
-}
-
-function authHeaders(extra) {
-  var h = extra || {};
-  if (MODE === "bearer" && TOK) { h["Authorization"] = "Bearer " + TOK; }
+function authHeaders() {
+  var h = {};
+  if (MODE === "bearer" && TOK) h["Authorization"] = "Bearer " + TOK;
   return h;
 }
 
-function api(path, extra) {
-  return fetch(path, { headers: authHeaders(extra) }).then(function (r) {
+function api(path) {
+  return fetch(path, { headers: authHeaders() }).then(function (r) {
     if (r.status === 401) throw new Error("unauthorized");
     return r.json();
   });
 }
 
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
 function renderBoot(text) {
   var blocks = text.split(/\n{2,}/).filter(Boolean);
   if (!blocks.length) { OUT.innerHTML = '<div class="empty">no memories yet. write via MCP: create_memory(core://agent, ...)</div>'; return; }
-  OUT.innerHTML = blocks.map(renderBlock).join("");
+  OUT.innerHTML = blocks.map(function (b) {
+    var m = b.match(/^([a-z]+:\\/\\/[^\n]+)\n?([\\s\\S]*)$/);
+    if (m) return '<div class="item"><div class="uri">' + esc(m[1]) + '</div><div class="body">' + esc(m[2].trim()) + '</div></div>';
+    return '<div class="item"><div class="body">' + esc(b.trim()) + '</div></div>';
+  }).join("");
 }
 
 function renderSearch(hits) {
@@ -177,68 +182,37 @@ function renderSearch(hits) {
   }).join("");
 }
 
-function renderBlock(b) {
-  var m = b.match(/^([a-z]+:\/\/[^\n]+)\n?([\s\S]*)$/);
-  if (m) {
-    return '<div class="item"><div class="uri">' + esc(m[1]) + '</div><div class="body">' + esc(m[2].trim()) + '</div></div>';
-  }
-  return '<div class="item"><div class="body">' + esc(b.trim()) + '</div></div>';
-}
-
-function esc(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
 function skeleton() {
   OUT.innerHTML = '<div class="skel"><div class="line" style="width:40%"></div><div class="line" style="width:90%"></div><div class="line" style="width:70%"></div></div>' +
     '<div class="skel"><div class="line" style="width:55%"></div><div class="line" style="width:85%"></div></div>';
 }
 
-function loadBoot() {
-  skeleton(); SECTION.textContent = "boot";
-  api("/admin/boot").then(function (d) { renderBoot(d.text); }).catch(function (e) { OUT.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
-}
-
 function doSearch() {
   var q = Q.value.trim();
-  if (!q) { loadBoot(); return; }
+  if (!q) { renderBoot(BOOT || "(empty)"); SECTION.textContent = "boot"; return; }
   skeleton(); SECTION.textContent = "search: " + q;
-  api("/admin/search?q=" + encodeURIComponent(q)).then(function (d) { renderSearch(d.hits); }).catch(function (e) { OUT.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+  api("/admin/search?q=" + encodeURIComponent(q)).then(renderSearch).catch(function (e) { OUT.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
 }
 
-function renderAuth() {
-  if (MODE === "access") {
-    setStatus(true, "access verified");
-    AUTH_ZONE.innerHTML = '<div class="auth-banner"><span class="ok">&#9679;</span> authenticated via Cloudflare Access</div>';
-    loadBoot();
-  } else {
-    setStatus(false, "bearer required");
-    AUTH_ZONE.innerHTML =
-      '<div class="token-form">' +
-      '<div class="field"><label for="tok">API token</label><input id="tok" type="password" placeholder="enter token" autocomplete="off"></div>' +
-      '<button class="btn" id="tokGo">Unlock</button>' +
-      '<div class="hint">no token? set one: wrangler secret put API_TOKEN. or protect this page with Cloudflare Access.</div>' +
-      '</div>';
-    if (TOK) document.getElementById("tok").value = TOK;
-    document.getElementById("tokGo").addEventListener("click", function () {
-      TOK = document.getElementById("tok").value.trim();
-      localStorage.setItem("nm-token", TOK);
-      verifyAndLoad();
-    });
-    document.getElementById("tok").addEventListener("keydown", function (e) { if (e.key === "Enter") document.getElementById("tokGo").click(); });
-    if (TOK) verifyAndLoad();
-  }
+function unlock() {
+  TOK = document.getElementById("tok").value.trim();
+  localStorage.setItem("nm-token", TOK);
+  skeleton(); SECTION.textContent = "boot";
+  api("/admin/boot").then(function (d) { BOOT = d.text; renderBoot(BOOT); }).catch(function () { OUT.innerHTML = '<div class="err">token rejected</div>'; });
 }
 
-function verifyAndLoad() {
-  setStatus(false, "verifying");
-  api("/admin/boot").then(function (d) { setStatus(true, "connected"); renderBoot(d.text); })
-    .catch(function () { setStatus(false, "invalid token"); OUT.innerHTML = '<div class="err">token rejected</div>'; });
+if (MODE === "bearer") {
+  document.getElementById("go").addEventListener("click", doSearch);
+  Q.addEventListener("keydown", function (e) { if (e.key === "Enter") doSearch(); });
+  var tokGo = document.getElementById("tokGo");
+  if (tokGo) tokGo.addEventListener("click", unlock);
+  var tokInp = document.getElementById("tok");
+  if (tokInp) tokInp.addEventListener("keydown", function (e) { if (e.key === "Enter") unlock(); });
+  if (TOK) unlock();
+} else {
+  document.getElementById("go").addEventListener("click", doSearch);
+  Q.addEventListener("keydown", function (e) { if (e.key === "Enter") doSearch(); });
 }
-
-document.getElementById("go").addEventListener("click", doSearch);
-Q.addEventListener("keydown", function (e) { if (e.key === "Enter") doSearch(); });
-renderAuth();
 </script>
 </body>
 </html>`;
