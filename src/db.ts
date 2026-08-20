@@ -353,6 +353,7 @@ export async function deleteMemory(db: D1Database, uri: string): Promise<DeleteR
     .first<{ n: number }>();
   if ((nodeRefs?.n ?? 0) === 0) {
     await removeSearchDocument(db, domain, path, nodeUuid);
+    await db.prepare("DELETE FROM triggers WHERE node_uuid = ?").bind(nodeUuid).run();
     await db.prepare("DELETE FROM memories WHERE node_uuid = ?").bind(nodeUuid).run();
     await db.prepare("DELETE FROM nodes WHERE uuid = ?").bind(nodeUuid).run();
   } else {
@@ -1018,6 +1019,7 @@ export async function autoForget(db: D1Database): Promise<ForgetResult> {
 
   let orphanCount = 0;
   for (const o of orphans.results ?? []) {
+    await db.prepare("DELETE FROM triggers WHERE node_uuid = ?").bind(o.uuid).run();
     await db.prepare("DELETE FROM memories WHERE node_uuid = ?").bind(o.uuid).run();
     await db.prepare("DELETE FROM nodes WHERE uuid = ?").bind(o.uuid).run();
     orphanCount++;

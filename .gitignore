@@ -13,3 +13,6 @@ dist/
 # env
 .env
 .env.local
+
+# local deploy config with real ids (never commit)
+wrangler.local.jsonc

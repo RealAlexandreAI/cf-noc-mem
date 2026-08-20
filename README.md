@@ -76,7 +76,12 @@ npx wrangler d1 create noc_mem
 npx wrangler r2 bucket create noc-mem-snapshots
 ```
 
-Then edit `wrangler.jsonc` and fill in the ids printed by the commands above:
+Then copy `wrangler.jsonc` to `wrangler.local.jsonc` (gitignored) and fill in the ids printed by the commands above — keeping your real ids out of git:
+
+```bash
+cp wrangler.jsonc wrangler.local.jsonc
+# edit wrangler.local.jsonc: database_id + your domain (or remove the routes block for *.workers.dev)
+```
 
 ```jsonc
 "d1_databases": [{ "database_name": "noc_mem", "database_id": "<paste here>" }],
@@ -92,7 +97,7 @@ npx wrangler d1 migrations apply noc_mem --remote
 
 ```bash
 npm run build --prefix frontend   # build the admin panel
-npx wrangler deploy
+npx wrangler deploy --config wrangler.local.jsonc   # real ids from your local config
 ```
 
 ### 6. Point your domain (optional)

@@ -74,7 +74,12 @@ npx wrangler d1 create noc_mem
 npx wrangler r2 bucket create noc-mem-snapshots
 ```
 
-然后编辑 `wrangler.jsonc`，把上面命令输出的 id 填进去：
+然后把 `wrangler.jsonc` 复制成 `wrangler.local.jsonc`（已被 git 忽略），把上面命令输出的 id 填进去——真实 id 不进 git：
+
+```bash
+cp wrangler.jsonc wrangler.local.jsonc
+# 编辑 wrangler.local.jsonc：填 database_id + 你的域名（用 *.workers.dev 就删掉 routes 块）
+```
 
 ```jsonc
 "d1_databases": [{ "database_name": "noc_mem", "database_id": "<粘贴到这里>" }],
@@ -90,7 +95,7 @@ npx wrangler d1 migrations apply noc_mem --remote
 
 ```bash
 npm run build --prefix frontend   # 构建管理面板
-npx wrangler deploy
+npx wrangler deploy --config wrangler.local.jsonc   # 真实 id 来自本地配置
 ```
 
 ### 6. 绑定域名（可选）
