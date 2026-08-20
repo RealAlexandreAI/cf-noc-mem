@@ -35,7 +35,12 @@ export default {
     // Web panel lives under /admin so one Access app ("/admin/*") protects
     // both the UI and admin API, leaving /mcp outside any Access app.
     if ((url.pathname === "/admin" || url.pathname === "/admin/") && req.method === "GET") {
-      return new Response(UI_HTML, { headers: { "content-type": "text/html; charset=utf-8" } });
+      return new Response(UI_HTML, {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store, no-cache, must-revalidate",
+        },
+      });
     }
 
     if (url.pathname === "/health" && req.method === "GET") {
