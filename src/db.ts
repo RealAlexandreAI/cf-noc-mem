@@ -458,7 +458,36 @@ export async function renameNode(db: D1Database, uri: string, newName: string): 
   const mem = await activeMemoryForNode(db, row.node_uuid);
   const edge = row.edge_id ? await db.prepare("SELECT priority, disclosure FROM edges WHERE id = ?").bind(row.edge_id).first<{ priority: number; disclosure: string | null }>() : null;
   await upsertSearchDocument(db, domain, newPath, row.node_uuid, mem?.id ?? 0, mem?.content ?? "", edge?.disclosure ?? null, edge?.priority ?? 0);
-  await recordAudit(db, "rename", `${domain}://${newPath}`, row.node_uuid, { from: `${domain}://${path}` }, { to: `${domain}://${newPath}` });
+
+  // cascade: rewrite descendant paths that hang under the old prefix so the
+  // tree's URIs stay consistent after the parent is renamed
+  const descendants: string[] = [];
+  const seen = new Set<string>([row.node_uuid]);
+  const queue = [row.node_uuid];
+  while (queue.length > 0) {
+    const parentUuid = queue.shift()!;
+    const kids = await db.prepare("SELECT child_uuid FROM edges WHERE parent_uuid = ?").bind(parentUuid).all<{ child_uuid: string }>();
+    for (const k of kids.results ?? []) {
+      if (seen.has(k.child_uuid)) continue;
+      seen.add(k.child_uuid);
+      descendants.push(k.child_uuid);
+      queue.push(k.child_uuid);
+    }
+  }
+  for (const nodeUuid of descendants) {
+    const pRows = await db.prepare("SELECT path, edge_id FROM paths WHERE domain = ? AND node_uuid = ?").bind(domain, nodeUuid).all<{ path: string; edge_id: number | null }>();
+    for (const p of pRows.results ?? []) {
+      if (!p.path.startsWith(path + "/")) continue; // only paths under the old prefix
+      const childNewPath = newPath + p.path.slice(path.length);
+      await db.prepare("UPDATE paths SET path = ? WHERE domain = ? AND path = ?").bind(childNewPath, domain, p.path).run();
+      await removeSearchDocument(db, domain, p.path);
+      const cMem = await activeMemoryForNode(db, nodeUuid);
+      const cEdge = p.edge_id ? await db.prepare("SELECT priority, disclosure FROM edges WHERE id = ?").bind(p.edge_id).first<{ priority: number; disclosure: string | null }>() : null;
+      await upsertSearchDocument(db, domain, childNewPath, nodeUuid, cMem?.id ?? 0, cMem?.content ?? "", cEdge?.disclosure ?? null, cEdge?.priority ?? 0);
+    }
+  }
+
+  await recordAudit(db, "rename", `${domain}://${newPath}`, row.node_uuid, { from: `${domain}://${path}` }, { to: `${domain}://${newPath}`, cascaded: descendants.length });
 
   return { uri: makeUri(domain, newPath) };
 }
@@ -513,6 +542,9 @@ export async function searchMemory(db: D1Database, query: string, limit: number 
 
   // Trigger-keyword recall: exact or substring match on the triggers table
   // (keywords are the memory's "call sign" — they rank above content FTS).
+  // Relevance: exact keyword match ranks first; substring match requires the
+  // keyword to be >=3 chars (short keywords like "ai" would over-match any word
+  // containing them); a node is returned once even if several keywords hit.
   const triggerHits = await db
     .prepare(
       `SELECT p.domain || '://' || p.path AS uri, t.node_uuid AS node_uuid, m.id AS memory_id,
@@ -521,11 +553,12 @@ export async function searchMemory(db: D1Database, query: string, limit: number 
        JOIN paths p ON p.node_uuid = t.node_uuid
        JOIN edges e ON e.id = p.edge_id
        JOIN memories m ON m.node_uuid = t.node_uuid AND m.deprecated = 0
-       WHERE t.keyword = ? OR ? LIKE '%' || t.keyword || '%'
-       ORDER BY e.priority ASC
+       WHERE t.keyword = ? OR (length(t.keyword) >= 3 AND ? LIKE '%' || t.keyword || '%')
+       GROUP BY p.domain, p.path
+       ORDER BY CASE WHEN t.keyword = ? THEN 0 ELSE 1 END, e.priority ASC
        LIMIT ?`
     )
-    .bind(q, q, limit)
+    .bind(q, q, q, limit)
     .all<SearchHit>()
     .then((r) => r.results ?? []);
 
@@ -558,7 +591,7 @@ export async function searchMemory(db: D1Database, query: string, limit: number 
       const tokens = q
         .split(/[^\p{L}\p{N}]+/u)
         .map((t) => t.toLowerCase())
-        .filter((t) => t.length >= 4 && !STOPWORDS.has(t));
+        .filter((t) => t.length >= 4 && !STOPWORDS.has(t) && !/^\d/.test(t));
       if (tokens.length > 0) {
         const orQuery = tokens.map((t) => `"${t}"`).join(" OR ");
         rows = await db
@@ -839,11 +872,14 @@ export interface AuditEntry {
   relation?: string | null;
 }
 
-export async function listAudit(db: D1Database, limit: number = 40): Promise<AuditEntry[]> {
-  const rows = await db
-    .prepare("SELECT id, op, uri, relation, created_at FROM audit_logs ORDER BY id DESC LIMIT ?")
-    .bind(Math.max(1, Math.min(limit, 200)))
-    .all<AuditEntry>();
+export async function listAudit(db: D1Database, limit: number = 40, uri?: string): Promise<AuditEntry[]> {
+  const n = Math.max(1, Math.min(limit, 200));
+  const rows = uri
+    ? await db
+        .prepare("SELECT id, op, uri, relation, created_at FROM audit_logs WHERE uri = ? ORDER BY id DESC LIMIT ?")
+        .bind(uri, n)
+        .all<AuditEntry>()
+    : await db.prepare("SELECT id, op, uri, relation, created_at FROM audit_logs ORDER BY id DESC LIMIT ?").bind(n).all<AuditEntry>();
   return rows.results ?? [];
 }
 

@@ -4,6 +4,7 @@ import {
   createMemory,
   deleteMemory,
   getNode,
+  listAudit,
   manageTriggers,
   readMemory,
   renameNode,
@@ -155,6 +156,17 @@ const TOOLS: ToolDef[] = [
       required: ["uri", "new_name"],
     },
   },
+  {
+    name: "list_audit",
+    description: "Lists recent audit entries (create/update/delete/rename/alias) with their audit ids. Pass an audit id to rollback_memory to undo a specific change.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        uri: { type: "string", description: "Optional filter: only entries touching this memory URI" },
+        limit: { type: "integer", minimum: 1, maximum: 200, description: "Max entries, default 20" },
+      },
+    },
+  },
 ];
 
 // ===========================================================================
@@ -301,6 +313,11 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
     case "rename_memory": {
       const r = await renameNode(db, String(args.uri ?? ""), String(args.new_name ?? ""));
       return r ? `Renamed to: ${r.uri}` : "Rename failed: not found or empty name.";
+    }
+    case "list_audit": {
+      const entries = await listAudit(db, Number(args.limit ?? 20), args.uri == null ? undefined : String(args.uri));
+      if (entries.length === 0) return "(no audit entries)";
+      return entries.map((a) => `#${a.id} ${a.op} ${a.uri ?? "(none)"}${a.relation ? ` relation=${a.relation}` : ""} @ ${a.created_at}`).join("\n");
     }
     default:
       throw new Error(`Unknown tool: ${name}`);

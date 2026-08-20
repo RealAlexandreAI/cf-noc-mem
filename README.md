@@ -27,7 +27,7 @@ Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treat
 - **Audit + rollback**: every change is tracked; mistakes are undoable
 - **Auto-forget** ("dream"): cron drops old versions, expired content, and cold low-priority memories — no manual cleanup
 
-## MCP tools (10)
+## MCP tools (11)
 
 | tool | purpose |
 |------|---------|
@@ -40,7 +40,8 @@ Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treat
 | `search_memory(query, limit?)` | trigger-keyword recall first, then FTS5 trigram (CJK-friendly), LIKE fallback |
 | `rollback_memory(audit_id)` | undo a change from the audit log |
 | `manage_triggers(action, keyword, target_uri?)` | add / remove / list trigger keywords |
-| `rename_memory(uri, new_name)` | rename the last path segment (node & content stay, search re-indexed) |
+| `rename_memory(uri, new_name)` | rename the last path segment (node & content stay, search re-indexed, descendant paths follow) |
+| `list_audit(uri?, limit?)` | browse recent audit entries to pick an `audit_id` for rollback |
 
 Also: `create_memory` accepts an explicit `title` (path name) so the content's first line is not eaten; REST API is reachable at `/api/*` with Bearer auth.
 
@@ -180,7 +181,7 @@ Claude Desktop (`claude_desktop_config.json`) uses the same shape:
 }
 ```
 
-Once connected, the agent sees the 10 tools (`read_memory`, `list_memories`, `create_memory`, …) directly. The plugins above only add convenience — a session-start boot protocol and memory-writing rules — none of which is required for the memory server to work.
+Once connected, the agent sees the 11 tools (`read_memory`, `list_memories`, `create_memory`, …) directly. The plugins above only add convenience — a session-start boot protocol and memory-writing rules — none of which is required for the memory server to work.
 
 ### Agent rules when running without a plugin
 

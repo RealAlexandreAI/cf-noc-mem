@@ -25,7 +25,7 @@
 - **审计 + 回滚**：每次变更都有记录；错了可以撤销
 - **自动遗忘**（"dream"）：cron 定时清除旧版本、过期内容和长期未访问的低等级记忆——无需人工清理
 
-## MCP 工具（10 个）
+## MCP 工具（11 个）
 
 | 工具 | 作用 |
 |------|------|
@@ -38,7 +38,8 @@
 | `search_memory(query, limit?)` | 先触发词召回，再 FTS5 trigram（对中文友好），最后 LIKE 兜底 |
 | `rollback_memory(audit_id)` | 从审计日志撤销一次变更 |
 | `manage_triggers(action, keyword, target_uri?)` | 添加 / 删除 / 列出触发关键词 |
-| `rename_memory(uri, new_name)` | 重命名最后一段路径（节点与内容不变，搜索索引重建） |
+| `rename_memory(uri, new_name)` | 重命名最后一段路径（节点与内容不变，搜索索引重建，子路径跟随迁移） |
+| `list_audit(uri?, limit?)` | 浏览最近审计记录，取 `audit_id` 用于回滚 |
 
 另外：`create_memory` 支持显式 `title`（路径名），内容首行不再被吞；REST API 可通过 `/api/*` + Bearer 直接访问。
 
@@ -178,7 +179,7 @@ Claude Desktop（`claude_desktop_config.json`）用同样的结构：
 }
 ```
 
-连上后，agent 直接看到全部 10 个工具（`read_memory`、`list_memories`、`create_memory`……）。上面的插件只是锦上添花——会话开始自动加载启动记忆 + 记忆写入规则——都不是记忆服务器工作的必需项。
+连上后，agent 直接看到全部 11 个工具（`read_memory`、`list_memories`、`create_memory`……）。上面的插件只是锦上添花——会话开始自动加载启动记忆 + 记忆写入规则——都不是记忆服务器工作的必需项。
 
 ### 不装插件时的 agent 规则
 

@@ -214,14 +214,18 @@ def s7_rename_contract():
     np = f"noc://zt_renamed_{uid}"
     txt, _ = call("rename_memory", {"uri": parent, "new_name": f"zt_renamed_{uid}"})
     check("S7c rename parent", txt and "Renamed" in txt, (txt or "")[:40])
-    # contract: rename is path-only, the node tree stays intact
+    # contract: rename cascades — child path follows the new prefix, alias stays
+    new_child = f"{np}/{child.split('/')[-1]}"
+    txt, _ = call("read_memory", {"uri": new_child})
+    check("S7d child path cascaded", txt and "rename child" in txt, (txt or "")[:40])
     txt, _ = call("read_memory", {"uri": child})
-    check("S7d child data intact", txt and "rename child" in txt, (txt or "")[:40])
+    check("S7e old child path dead", txt and "not found" in txt.lower(), (txt or "")[:40])
     txt, _ = call("list_memories", {"uri": np, "limit": 10})
-    check("S7e new parent lists child", txt and child.split("/")[-1] in txt, (txt or "")[:60])
+    check("S7f new parent lists child", txt and child.split("/")[-1] in txt, (txt or "")[:60])
     txt, _ = call("read_memory", {"uri": al})
-    check("S7f alias still resolves", txt is not None, (txt or "")[:40])
+    check("S7g alias still resolves", txt is not None, (txt or "")[:40])
     created.append(np)
+    created.append(new_child)
 
 
 def s8_search_modes():
@@ -233,7 +237,7 @@ def s8_search_modes():
     check("S8b multi-word FTS", txt and uri in txt, (txt or "")[:70])
     txt, _ = call("search_memory", {"query": f"zt-loop-{uid} completely unrelated phrase nobody wrote down"})
     check("S8c token-OR fallback", txt and uri in txt, (txt or "")[:70])
-    txt, _ = call("search_memory", {"query": f"zzqqxxyy_nonexistent_{uuid.uuid4().hex[:8]}"})
+    txt, _ = call("search_memory", {"query": "qzxvkw" + uuid.uuid4().hex[:10]})
     check("S8d empty result graceful", txt is not None and "no results" in txt.lower(), (txt or "")[:50])
     txt, err = call("search_memory", {"query": ""})
     check("S8e empty query handled", txt is not None or err, (txt or err or "")[:50])
@@ -291,11 +295,86 @@ def s12_expiry_clear():
         created.append(uri2)
 
 
+def s13_audit_query():
+    print("S13 audit query + rollback via listed id")
+    uri, _ = create("noc://", f"zt-loop-{uid} audit base")
+    if not uri:
+        check("S13a create", False); return
+    txt, _ = call("update_memory", {"uri": uri, "content": f"zt-loop-{uid} audit v2"})
+    check("S13b update", txt and "Updated" in txt, (txt or "")[:30])
+    txt, _ = call("list_audit", {"uri": uri, "limit": 10})
+    check("S13c list_audit filter by uri", txt and "update" in txt and uri in txt, (txt or "")[:80])
+    import re as _re
+    m = _re.search(r"#(\d+) update", txt or "")
+    check("S13d audit id extractable", m is not None, (txt or "")[:80])
+    aid = int(m.group(1)) if m else 0
+    txt, _ = call("rollback_memory", {"audit_id": aid})
+    check("S13e rollback via listed id", txt and "rolled back" in txt, (txt or "")[:40])
+    txt, _ = call("read_memory", {"uri": uri})
+    check("S13f restored", txt and "audit base" in txt and "audit v2" not in txt, (txt or "")[:50])
+    txt, _ = call("list_audit", {"limit": 3})
+    check("S13g list_audit unfiltered", txt and "create" in txt, (txt or "")[:80])
+
+
+def s14_rename_cascade():
+    print("S14 rename cascades to descendant paths")
+    parent, _ = create("noc://", f"zt-loop-{uid} cascade root")
+    if not parent:
+        check("S14a create parent", False); return
+    child, _ = create(parent, f"zt-loop-{uid} cascade mid")
+    if not child:
+        check("S14b create child", False); return
+    grand, _ = create(child, f"zt-loop-{uid} cascade leaf")
+    if not grand:
+        check("S14c create grandchild", False); return
+    old_prefix = parent
+    txt, _ = call("rename_memory", {"uri": parent, "new_name": f"cascade_renamed_{uid}"})
+    check("S14d rename root", txt and "Renamed" in txt, (txt or "")[:40])
+    new_parent = f"noc://cascade_renamed_{uid}"
+    new_child = f"{new_parent}/{child.split('/')[-1]}"
+    new_grand = f"{new_child}/{grand.split('/')[-1]}"
+    txt, _ = call("read_memory", {"uri": new_child})
+    check("S14e child path rewritten", txt and "cascade mid" in txt, (txt or "")[:40])
+    txt, _ = call("read_memory", {"uri": new_grand})
+    check("S14f grandchild path rewritten", txt and "cascade leaf" in txt, (txt or "")[:40])
+    txt, _ = call("read_memory", {"uri": child})
+    check("S14g old child path dead", txt and "not found" in txt.lower(), (txt or "")[:40])
+    txt, _ = call("search_memory", {"query": f"cascade leaf zt-loop-{uid}"})
+    check("S14h search finds new path", txt and new_grand in txt, (txt or "")[:70])
+    created.extend([new_grand, new_child, new_parent])
+
+
+def s15_trigger_relevance():
+    print("S15 trigger relevance (exact first, short words safe, dedup)")
+    uri_a, _ = create("noc://", f"zt-loop-{uid} alpha trigger subject")
+    uri_b, _ = create("noc://", f"zt-loop-{uid} beta trigger subject")
+    if not uri_a or not uri_b:
+        check("S15a create", False); return
+    kw_a = f"zt-trig-exact-{uid}"
+    kw_b = f"zt-trig-sub-{uid}"
+    call("manage_triggers", {"action": "add", "keyword": kw_a, "target_uri": uri_a})
+    call("manage_triggers", {"action": "add", "keyword": kw_b, "target_uri": uri_b})
+    # short keyword that is a substring of many words must NOT hijack recall
+    call("manage_triggers", {"action": "add", "keyword": "ai", "target_uri": uri_b})
+    txt, _ = call("search_memory", {"query": kw_a})
+    check("S15b exact keyword recalls exact node", txt and "[trigger]" in txt and uri_a in txt, (txt or "")[:70])
+    txt, _ = call("search_memory", {"query": f"painting {kw_b}"})
+    check("S15c substring keyword still recalls", txt and uri_b in txt, (txt or "")[:70])
+    txt, _ = call("search_memory", {"query": "painting the landscape"})
+    check("S15d short keyword (ai) not hijacked", not txt or uri_b not in txt, (txt or "")[:70])
+    # both keywords on one node -> single hit (dedup)
+    call("manage_triggers", {"action": "add", "keyword": f"zt-trig-dup1-{uid}", "target_uri": uri_a})
+    call("manage_triggers", {"action": "add", "keyword": f"zt-trig-dup2-{uid}", "target_uri": uri_a})
+    txt, _ = call("search_memory", {"query": f"zt-trig-dup1-{uid}"})
+    check("S15e multi-keyword node returns once", txt and uri_a in txt, (txt or "")[:70])
+
+
 def main():
     print(f"noc scenario loop (uid={uid})\n")
     for fn in [s1_project_handoff, s2_meeting_note, s3_self_correction, s4_trigger_mgmt,
                s5_hierarchy, s6_full_replace_vs_append, s7_rename_contract, s8_search_modes,
-               s9_system_nodes, s10_boundaries, s11_slug, s12_expiry_clear]:
+               s9_system_nodes, s10_boundaries, s11_slug, s12_expiry_clear,
+               s13_audit_query, s14_rename_cascade, s15_trigger_relevance]:
         try:
             fn()
         except Exception as e:
