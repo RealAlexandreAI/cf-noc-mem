@@ -27,7 +27,7 @@ Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treat
 - **Audit + rollback**: every change is tracked; mistakes are undoable
 - **Auto-forget** ("dream"): cron drops old versions, expired content, and cold low-priority memories — no manual cleanup
 
-## MCP tools (9)
+## MCP tools (10)
 
 | tool | purpose |
 |------|---------|
@@ -180,7 +180,41 @@ Claude Desktop (`claude_desktop_config.json`) uses the same shape:
 }
 ```
 
-Once connected, the agent sees the 9 tools (`read_memory`, `list_memories`, `create_memory`, …) directly. The plugins above only add convenience — a session-start boot protocol and memory-writing rules — none of which is required for the memory server to work.
+Once connected, the agent sees the 10 tools (`read_memory`, `list_memories`, `create_memory`, …) directly. The plugins above only add convenience — a session-start boot protocol and memory-writing rules — none of which is required for the memory server to work.
+
+### Agent rules when running without a plugin
+
+The plugins do two things beyond the tools: a **session-start boot** and **memory-writing rules**. With a manual config you get neither — drop these rules into your agent (CLAUDE.md, `.cursor/rules`, or any system prompt) so the memory actually gets used:
+
+```markdown
+## Noc Memory usage rules
+
+### Session start
+- Call `read_memory` on `system://boot` first — it anchors the session with core memories.
+- Then `system://briefing` for today's context (recent activity, expiring memories, cold candidates).
+
+### Read
+- Prefer `search_memory` over browsing — it surfaces trigger-keyword-bound memories above FTS noise.
+- Periodically read `system://diagnostic/noc` to catch stale, orphaned or crowded memories.
+
+### Write
+- Pull-based: write only what you would look up again. Skip ephemera (task logs, one-off facts).
+- Search before writing: same topic → `update_memory`; new topic → `create_memory`.
+- Prefer full rewrite with `content=` over `append` when a memory evolves.
+- New info contradicts old memory → `update_memory` with `relation: "challenge"`.
+- Parent URI: `noc://agent` for general knowledge; a project node for scoped knowledge.
+- `priority`: 0 = most important (recalled first); higher = less important.
+- `expires_at`: set for temporary knowledge (meeting notes…) so it auto-deprecates.
+- `disclosure`: mark anything sensitive.
+- Keep titles short and ASCII — they become the URI path.
+- Bind `manage_triggers` keywords to deep memories so a later search recalls them directly.
+
+### Maintenance
+- Keep nodes flat: shared facts on the parent, specifics on children.
+- If a memory is never read again, ask why before keeping it.
+```
+
+That is exactly what the [pi plugin's rules](https://github.com/RealAlexandreAI/pi-noc-memory) inject at session start — the manual config just makes you own the copy.
 
 ## Tests
 

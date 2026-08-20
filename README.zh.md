@@ -25,7 +25,7 @@
 - **审计 + 回滚**：每次变更都有记录；错了可以撤销
 - **自动遗忘**（"dream"）：cron 定时清除旧版本、过期内容和长期未访问的低等级记忆——无需人工清理
 
-## MCP 工具（9 个）
+## MCP 工具（10 个）
 
 | 工具 | 作用 |
 |------|------|
@@ -178,7 +178,41 @@ Claude Desktop（`claude_desktop_config.json`）用同样的结构：
 }
 ```
 
-连上后，agent 直接看到全部 9 个工具（`read_memory`、`list_memories`、`create_memory`……）。上面的插件只是锦上添花——会话开始自动加载启动记忆 + 记忆写入规则——都不是记忆服务器工作的必需项。
+连上后，agent 直接看到全部 10 个工具（`read_memory`、`list_memories`、`create_memory`……）。上面的插件只是锦上添花——会话开始自动加载启动记忆 + 记忆写入规则——都不是记忆服务器工作的必需项。
+
+### 不装插件时的 agent 规则
+
+插件除了工具外还做两件事：**会话开始自动 boot** 和**记忆写入规则**。手动配置两者都没有——把下面这段规则加进你的 agent（CLAUDE.md、`.cursor/rules` 或任意系统提示词），记忆才会真正被用起来：
+
+```markdown
+## Noc Memory 使用规则
+
+### 会话开始
+- 先 `read_memory` 读 `system://boot`——它用核心记忆锚定本次会话。
+- 再读 `system://briefing` 获取今日上下文（近期活动、即将过期、冷候选）。
+
+### 读取
+- 优先 `search_memory` 而不是浏览——它能把绑定触发词的记忆顶到 FTS 噪音之上。
+- 定期读 `system://diagnostic/noc`，发现陈旧、孤儿或过于拥挤的记忆。
+
+### 写入
+- 拉取式：只写你以后会再查的东西。跳过临时信息（任务流水、一次性事实）。
+- 先搜再写：同话题 → `update_memory`；新话题 → `create_memory`。
+- 记忆演进时优先用 `content=` 整体重写，而不是 `append` 追加。
+- 新信息与旧记忆矛盾 → `update_memory` 且 `relation: "challenge"`。
+- 父路径：通用知识用 `noc://agent`；领域知识用项目节点（如 `noc://agent/<项目>`）。
+- `priority`：0 = 最重要（优先召回）；数字越大越次要。
+- `expires_at`：临时知识（会议纪要等）设置它，到时自动淘汰。
+- `disclosure`：敏感内容标记上。
+- title 保持简短 ASCII——它会被用作 URI 路径。
+- 用 `manage_triggers` 给深层记忆绑关键词，之后搜索能直接召回。
+
+### 维护
+- 节点保持扁平：共性放父节点，细节放子节点。
+- 一条记忆再也读不到时，先问为什么，再决定是否保留。
+```
+
+这正是 [pi 插件的规则](https://github.com/RealAlexandreAI/pi-noc-memory)在会话开始注入的内容——手动配置只是让你自己保管这份拷贝。
 
 ## 测试
 
