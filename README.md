@@ -55,7 +55,14 @@ npx wrangler deploy                   # set API_TOKEN via wrangler secret put
 ## Status
 
 - [x] MCP core: initialize / tools/list / tools/call, 7 tools, Bearer auth
-- [x] D1 schema + FTS5 trigram CJK search (verified: 2-char LIKE fallback + >=3-char trigram)
-- [ ] PG → D1 data migration script
-- [ ] snapshots/backups on R2
-- [ ] read-only web UI / admin panel
+- [x] D1 schema + FTS5 trigram CJK search (verified locally + remote D1)
+- [x] PG → D1 migration (`scripts/migrate_pg_to_d1.py`, run on host with PG access; import via `wrangler d1 execute --remote --file=`)
+- [x] FTS rebuild endpoint `POST /admin/rebuild-search` (run after import)
+- [x] R2 snapshots: daily cron `0 3 * * *` + manual `POST /admin/snapshot`
+- [x] Read-only web panel `GET /` (boot list + full-text search, token via localStorage)
+- [ ] Custom domain DNS activation (`REPLACE_WITH_YOUR_DOMAIN` route created, zone DNS record pending)
+- [ ] Admin panel: review / rollback
+
+## Privacy
+
+Public repo. No secrets in git: API token lives in `wrangler secret put API_TOKEN`; PG credentials are read from env at migration time. `.dev.vars` is gitignored.

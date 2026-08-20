@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "noc_mem",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
     }
   ],
   "r2_buckets": [
@@ -24,8 +24,16 @@
     }
   ],
   "vars": {
-    "API_TOKEN": "REPLACE_WITH_LONG_RANDOM_TOKEN",
     "MCP_MAX_CONTENT_BYTES": "65536"
+  },
+  "routes": [
+    {
+      "pattern": "REPLACE_WITH_YOUR_DOMAIN",
+      "custom_domain": true
+    }
+  ],
+  "triggers": {
+    "crons": ["0 3 * * *"]
   },
   "observability": {
     "enabled": true
