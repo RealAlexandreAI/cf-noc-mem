@@ -519,6 +519,69 @@ export async function systemRecent(db: D1Database, n: number): Promise<SystemInd
   return (rows.results ?? []).map((r) => ({ uri: makeUri(r.domain, r.path), title: r.title, updated_at: r.updated_at }));
 }
 
+// ===========================================================================
+// admin: browse / audit / status
+// ===========================================================================
+
+export interface MemoryEntry {
+  uri: string;
+  title: string;
+  priority: number;
+  updated_at: string;
+}
+
+export async function listAll(db: D1Database): Promise<MemoryEntry[]> {
+  const rows = await db
+    .prepare(
+      `SELECT p.domain, p.path, e.name AS title, e.priority, e.created_at AS updated_at
+       FROM paths p JOIN edges e ON e.id = p.edge_id
+       ORDER BY e.priority ASC, e.created_at DESC`
+    )
+    .all<{ domain: string; path: string; title: string; priority: number; updated_at: string }>();
+  return (rows.results ?? []).map((r) => ({
+    uri: makeUri(r.domain, r.path),
+    title: r.title,
+    priority: r.priority,
+    updated_at: r.updated_at,
+  }));
+}
+
+export interface AuditEntry {
+  id: number;
+  op: string;
+  uri: string | null;
+  created_at: string;
+}
+
+export async function listAudit(db: D1Database, limit: number = 40): Promise<AuditEntry[]> {
+  const rows = await db
+    .prepare("SELECT id, op, uri, created_at FROM audit_logs ORDER BY id DESC LIMIT ?")
+    .bind(Math.max(1, Math.min(limit, 200)))
+    .all<AuditEntry>();
+  return rows.results ?? [];
+}
+
+export async function dbStatus(db: D1Database, snapshots: R2Bucket): Promise<Record<string, unknown>> {
+  const counts = await db
+    .prepare(
+      `SELECT
+        (SELECT COUNT(*) FROM nodes) AS nodes,
+        (SELECT COUNT(*) FROM memories) AS memories,
+        (SELECT COUNT(*) FROM edges) AS edges,
+        (SELECT COUNT(*) FROM paths) AS paths,
+        (SELECT COUNT(*) FROM triggers) AS triggers,
+        (SELECT COUNT(*) FROM audit_logs) AS audit,
+        (SELECT COUNT(*) FROM search_fts) AS fts`
+    )
+    .first<Record<string, number>>();
+  const snaps = await snapshots.list({ prefix: "snapshots/" });
+  return {
+    ...(counts ?? {}),
+    snapshots: snaps.objects.length,
+    last_snapshot: snaps.objects[0]?.key ?? null,
+  };
+}
+
 async function upsertSearchDocument(
   db: D1Database,
   domain: string,

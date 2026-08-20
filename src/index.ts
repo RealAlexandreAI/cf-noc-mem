@@ -1,6 +1,6 @@
 import { checkAuth } from "./auth";
 import { Env } from "./config";
-import { searchMemory, syncSearchFromPaths, systemBoot } from "./db";
+import { dbStatus, listAll, listAudit, searchMemory, syncSearchFromPaths, systemBoot, systemRecent } from "./db";
 import { handleMcpRequest } from "./mcp";
 import { UI_HTML } from "./ui";
 
@@ -80,6 +80,19 @@ export default {
       const q = url.searchParams.get("q") || "";
       const hits = await searchMemory(env.DB, q, 20);
       return jsonOk({ hits });
+    }
+    if (url.pathname === "/admin/all" && req.method === "GET") {
+      return jsonOk({ entries: await listAll(env.DB) });
+    }
+    if (url.pathname === "/admin/recent" && req.method === "GET") {
+      const items = await systemRecent(env.DB, 20);
+      return jsonOk({ items });
+    }
+    if (url.pathname === "/admin/audit" && req.method === "GET") {
+      return jsonOk({ entries: await listAudit(env.DB, 40) });
+    }
+    if (url.pathname === "/admin/status" && req.method === "GET") {
+      return jsonOk(await dbStatus(env.DB, env.SNAPSHOTS));
     }
 
     if (url.pathname === "/health" && req.method === "GET") {
