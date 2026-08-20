@@ -422,9 +422,41 @@ export interface SearchHit {
   snippet: string;
 }
 
+// English stopwords for the FTS token-OR fallback (noise tokens dilute ranking).
+const STOPWORDS = new Set([
+  "what", "when", "where", "which", "who", "whom", "whose", "why", "how",
+  "the", "and", "with", "from", "that", "this", "these", "those", "have", "has",
+  "been", "were", "was", "did", "does", "do", "will", "would", "should", "could",
+  "can", "there", "their", "they", "them", "then", "than", "about", "into", "over",
+  "after", "before", "during", "between", "through", "your", "you", "her", "his",
+  "its", "our", "their", "going", "come", "came", "goes", "went", "said", "says",
+  "told", "tell", "think", "thought", "know", "knew", "want", "wanted", "need",
+  "like", "liked", "make", "made", "get", "got", "give", "gave", "take", "took",
+  "been", "also", "just", "very", "really", "much", "many", "more", "most",
+  "something", "anything", "nothing", "everything", "some", "any", "all", "one",
+  "two", "today", "yesterday", "tomorrow", "tonight", "morning", "evening", "now",
+  "here", "there", "back", "again", "never", "always", "sure", "maybe", "perhaps",
+  "thank", "thanks", "okay", "fine", "well", "good", "great", "love", "sorry",
+]);
+
 export async function searchMemory(db: D1Database, query: string, limit: number = 20): Promise<SearchHit[]> {
   const q = query.trim();
   if (!q) return [];
+
+  // Expired memories (Foresight) are excluded from retrieval even before the
+  // auto-forget cron deprecates them — an expired memory is no longer "true".
+  const expiredUris = new Set(
+    (await db
+      .prepare(
+        `SELECT p.domain || '://' || p.path AS uri
+         FROM paths p JOIN memories m ON m.node_uuid = p.node_uuid AND m.deprecated = 0
+         WHERE m.expires_at IS NOT NULL AND m.expires_at < ?`
+      )
+      .bind(nowSql())
+      .all<{ uri: string }>())
+      .results?.map((r) => r.uri) ?? []
+  );
+  const notExpired = (hits: SearchHit[]) => hits.filter((h) => !expiredUris.has(h.uri));
 
   // Trigger-keyword recall: exact or substring match on the triggers table
   // (keywords are the memory's "call sign" — they rank above content FTS).
@@ -448,12 +480,12 @@ export async function searchMemory(db: D1Database, query: string, limit: number 
   // matched, that IS the precise recall — return trigger hits as-is, no FTS
   // noise. Only when triggers miss do we fall through to FTS/LIKE.
   if (triggerHits.length > 0) {
-    return triggerHits.map((h) => ({ ...h, snippet: "[trigger] " + h.snippet }));
+    return notExpired(triggerHits).map((h) => ({ ...h, snippet: "[trigger] " + h.snippet }));
   }
 
   let rows: SearchHit[] = [];
   if (q.length >= 3) {
-    // trigram: quote the phrase; FTS table stores uri/content directly (no rowid join)
+    // trigram FTS: phrase match first (precise), ranked by rowid.
     rows = await db
       .prepare(
         `SELECT uri, '' AS node_uuid, 0 AS memory_id, CAST(search_terms AS INTEGER) AS priority, substr(content, 1, 200) AS snippet
@@ -464,6 +496,30 @@ export async function searchMemory(db: D1Database, query: string, limit: number 
       .bind(`"${q.replace(/"/g, "")}"`, limit)
       .all<SearchHit>()
       .then((r) => r.results ?? []);
+
+    // Long natural-language queries (e.g. "When did Caroline go to the
+    // LGBTQ support group?") almost never match as a quoted phrase. Fall
+    // back to OR of significant tokens so the retriever still surfaces the
+    // relevant turns. rank() is FTS5's built-in BM25-style score (lower=better).
+    if (rows.length === 0) {
+      const tokens = q
+        .split(/[^\p{L}\p{N}]+/u)
+        .map((t) => t.toLowerCase())
+        .filter((t) => t.length >= 4 && !STOPWORDS.has(t));
+      if (tokens.length > 0) {
+        const orQuery = tokens.map((t) => `"${t}"`).join(" OR ");
+        rows = await db
+          .prepare(
+            `SELECT uri, '' AS node_uuid, 0 AS memory_id, CAST(search_terms AS INTEGER) AS priority, substr(content, 1, 200) AS snippet
+             FROM search_fts WHERE search_fts MATCH ?
+             ORDER BY rank
+             LIMIT ?`
+          )
+          .bind(orQuery, limit)
+          .all<SearchHit>()
+          .then((r) => r.results ?? []);
+      }
+    }
   }
 
   if (rows.length === 0) {
@@ -482,7 +538,7 @@ export async function searchMemory(db: D1Database, query: string, limit: number 
       .then((r) => r.results ?? []);
   }
 
-  return rows;
+  return notExpired(rows);
 }
 
 // ===========================================================================
