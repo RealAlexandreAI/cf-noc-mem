@@ -6,6 +6,7 @@ import {
   getNode,
   manageTriggers,
   readMemory,
+  renameNode,
   rollbackMemory,
   searchMemory,
   systemBoot,
@@ -44,6 +45,7 @@ const TOOLS: ToolDef[] = [
       properties: {
         parent_uri: { type: "string", description: "Parent node URI, e.g. noc://agent" },
         content: { type: "string", description: "Detailed text content of the memory" },
+        title: { type: "string", description: "Explicit path name (slugged). Falls back to the first line of content. Use short ASCII/CJK, e.g. project_notes" },
         priority: { type: "integer", minimum: 0, description: "Retrieval priority, lower first (1,2,3)" },
         disclosure: { type: "string", description: "Optional disclosure note" },
         expires_at: { type: "string", description: "ISO datetime; memory auto-leaves search after this" },
@@ -141,6 +143,18 @@ const TOOLS: ToolDef[] = [
       required: ["action", "keyword"],
     },
   },
+  {
+    name: "rename_memory",
+    description: "Renames a memory's path (the URI changes, the node and its content stay). The last path segment is replaced with the new name.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        uri: { type: "string", description: "Current URI, e.g. noc://agent/old_name" },
+        new_name: { type: "string", description: "New last path segment, e.g. pg_docdb (slugged)" },
+      },
+      required: ["uri", "new_name"],
+    },
+  },
 ];
 
 // ===========================================================================
@@ -223,6 +237,7 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
       const r = await createMemory(db, {
         parentUri: String(args.parent_uri ?? ""),
         content: String(args.content ?? ""),
+        title: args.title == null ? null : String(args.title),
         priority: Number(args.priority ?? 0),
         disclosure: args.disclosure == null ? null : String(args.disclosure),
         expiresAt: args.expires_at == null ? null : String(args.expires_at),
@@ -280,6 +295,10 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
     case "manage_triggers": {
       const r = await manageTriggers(db, String(args.action ?? ""), String(args.keyword ?? ""), args.target_uri == null ? undefined : String(args.target_uri));
       return r.message;
+    }
+    case "rename_memory": {
+      const r = await renameNode(db, String(args.uri ?? ""), String(args.new_name ?? ""));
+      return r ? `Renamed to: ${r.uri}` : "Rename failed: not found or empty name.";
     }
     default:
       throw new Error(`Unknown tool: ${name}`);

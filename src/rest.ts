@@ -10,6 +10,7 @@ import {
   searchMemory,
   updateMemory,
   addAlias as dbAlias,
+  renameNode,
   dbStatus,
   manageTriggers,
 } from "./db";
@@ -135,7 +136,11 @@ export async function handleRest(req: Request, url: URL, env: Env): Promise<Resp
         const r = await dbAlias(env.DB, newUri, targetUri, b.priority ?? 0, b.disclosure ?? null);
         return r ? json({ success: true }) : bad("alias failed", 409);
       }
-      if (parts[2] === "rename") return bad("rename not supported");
+      if (parts[2] === "rename") {
+        const b = body as { domain?: string; path?: string; new_name?: string };
+        const r = await renameNode(env.DB, `${b.domain || "noc"}://${b.path || ""}`, b.new_name || "");
+        return r ? json({ success: true, uri: r.uri }) : bad("rename failed (not found or empty name)", 404);
+      }
     }
     if (sub === "search") {
       const hits = await searchMemory(env.DB, q("q"), Number(q("limit") || 20));

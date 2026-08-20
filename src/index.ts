@@ -75,10 +75,10 @@ export default {
 
     // The whole panel lives under /admin (Cloudflare Access guards /admin).
     // /mcp and /health stay public (worker-gated); /assets/* are static build
-    // files (index.html references them by absolute path). Everything else
+    // files; /api/* is the REST contract (Bearer-gated). Everything else
     // 302s to /admin/ so no page is served outside the Access boundary.
     const isAsset = url.pathname.startsWith("/assets/");
-    if (!isAsset && url.pathname !== "/mcp" && url.pathname !== "/health" && !url.pathname.startsWith("/admin")) {
+    if (!isAsset && url.pathname !== "/mcp" && url.pathname !== "/health" && !url.pathname.startsWith("/admin") && !url.pathname.startsWith("/api/")) {
       const target = "/admin/";
       return new Response(null, {
         status: 302,

@@ -157,6 +157,7 @@ export interface CreateInput {
   priority: number;
   disclosure: string | null;
   expiresAt?: string | null; // ISO time; memory auto-deprecates after this (Foresight)
+  title?: string | null; // explicit path name; falls back to first line of content
 }
 
 export async function createMemory(db: D1Database, input: CreateInput): Promise<{ uri: string; content: string }> {
@@ -164,8 +165,8 @@ export async function createMemory(db: D1Database, input: CreateInput): Promise<
   const parent = await resolvePathRow(db, parentDomain, parentPath);
   const parentNode = parent?.node_uuid ?? ROOT_NODE;
 
-  // child path name = last segment of the memory title (first line of content)
-  const title = input.content.split("\n")[0].trim().slice(0, 80) || "untitled";
+  // path name: explicit title wins; otherwise last segment of the first content line
+  const title = (input.title?.trim() || input.content.split("\n")[0].trim().slice(0, 80) || "untitled");
   const childPath = `${parentPath ? parentPath + "/" : ""}${slugify(title)}`;
 
   // uniqueness: if path already exists, append suffix
@@ -201,9 +202,10 @@ export async function createMemory(db: D1Database, input: CreateInput): Promise<
 }
 
 function slugify(title: string): string {
+  // keep letters, digits, hyphens, underscores, CJK; replace the rest with _
   const s = title
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, "_")
+    .replace(/[^\p{L}\p{N}_-]+/gu, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 64);
   return s || "untitled";
@@ -408,6 +410,35 @@ export async function addAlias(
   await recordAudit(db, "alias", newUri, target.node_uuid, null, { target_uri: targetUri });
 
   return readMemory(db, newUri);
+}
+
+// ===========================================================================
+// rename — change the path of an existing memory (URI changes, node stays)
+// ===========================================================================
+
+export async function renameNode(db: D1Database, uri: string, newName: string): Promise<{ uri: string } | null> {
+  const { domain, path } = parseUri(uri);
+  const row = await resolvePathRow(db, domain, path);
+  if (!row || !row.node_uuid) return null;
+
+  const base = newName.trim().replace(/[^\p{L}\p{N}_-]+/gu, "_").replace(/^_+|_+$/g, "").slice(0, 64);
+  if (!base) return null;
+
+  const segs = path.split("/");
+  segs[segs.length - 1] = base;
+  const newPath = await uniquePath(db, domain, segs.join("/"));
+  if (newPath === path) return { uri }; // no-op
+
+  // node is shared by alias paths — only this path segment changes
+  await db.prepare("UPDATE paths SET path = ? WHERE domain = ? AND path = ?").bind(newPath, domain, path).run();
+  // rebuild search entry: remove old path's document, index the new path
+  await removeSearchDocument(db, domain, path);
+  const mem = await activeMemoryForNode(db, row.node_uuid);
+  const edge = row.edge_id ? await db.prepare("SELECT priority, disclosure FROM edges WHERE id = ?").bind(row.edge_id).first<{ priority: number; disclosure: string | null }>() : null;
+  await upsertSearchDocument(db, domain, newPath, row.node_uuid, mem?.id ?? 0, mem?.content ?? "", edge?.disclosure ?? null, edge?.priority ?? 0);
+  await recordAudit(db, "rename", `${domain}://${newPath}`, row.node_uuid, { from: `${domain}://${path}` }, { to: `${domain}://${newPath}` });
+
+  return { uri: makeUri(domain, newPath) };
 }
 
 // ===========================================================================
