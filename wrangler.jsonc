@@ -26,6 +26,11 @@
   "vars": {
     "MCP_MAX_CONTENT_BYTES": "65536"
   },
+  "assets": {
+    "directory": "./frontend/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
   "routes": [
     {
       "pattern": "REPLACE_WITH_YOUR_DOMAIN",

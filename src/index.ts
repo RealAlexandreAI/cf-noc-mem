@@ -2,7 +2,6 @@ import { checkAuth } from "./auth";
 import { Env } from "./config";
 import { dbStatus, getAudit, listAll, listAudit, rollbackMemory, searchMemory, syncSearchFromPaths, systemBoot, systemRecent } from "./db";
 import { handleMcpRequest } from "./mcp";
-import { UI_HTML } from "./ui";
 
 async function takeSnapshot(env: Env): Promise<string> {
   const dump = await env.DB.prepare(
@@ -38,35 +37,9 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
 
-    // Web panel lives under /admin so one Access app ("/admin") protects
-    // both the UI and admin API, leaving /mcp outside any Access app.
-    if ((url.pathname === "/admin" || url.pathname === "/admin/") && req.method === "GET") {
-      // Server-render the mode banner + (if Access) pre-load boot data,
-      // so the page is useful even if client JS errors out.
-      const accessOk = !!req.headers.get("Cf-Access-Authenticated-User-Email");
-      const bootText = accessOk ? await systemBoot(env.DB) : null;
-      const html = UI_HTML
-        .replaceAll("__AUTH_MODE__", accessOk ? "access" : "bearer")
-        .replace("__STATUS_TEXT__", accessOk ? "access verified" : "bearer required")
-        .replace("__STATUS_CLASS__", accessOk ? " ok" : "")
-        .replace(
-          "__AUTH_ZONE_HTML__",
-          accessOk
-            ? '<div class="auth-banner"><span class="ok">&#9679;</span> authenticated via Cloudflare Access</div>'
-            : '<div class="token-form">' +
-              '<div class="field"><label for="tok">API token</label><input id="tok" type="password" placeholder="enter token" autocomplete="off" value="' + (env.API_TOKEN ? "" : "") + '"></div>' +
-              '<button class="btn" id="tokGo">Unlock</button>' +
-              '<div class="hint">no token? wrangler secret put API_TOKEN. or protect this page with Cloudflare Access.</div>' +
-              '</div>'
-        )
-        .replace("__BOOT_DATA__", bootText === null ? "null" : JSON.stringify(bootText));
-      return new Response(html, {
-        headers: {
-          "content-type": "text/html; charset=utf-8",
-          "cache-control": "no-store, no-cache, must-revalidate",
-        },
-      });
-    }
+    // The React SPA frontend is served by the ASSETS binding. /api/*, /mcp,
+    // /admin/* and /health are handled by the worker; everything else falls
+    // through to the SPA (assets).
 
     // Admin data endpoints: dual-mode (Access header OR Bearer), see auth.ts.
     const denied = checkAuth(req, env);
@@ -148,6 +121,8 @@ export default {
       return handleMcpRequest(body, env);
     }
 
+    // Fall through to the React SPA (ASSETS binding serves the Vite build).
+    if (env.ASSETS) return env.ASSETS.fetch(req);
     return new Response(JSON.stringify({ error: "Not Found" }), {
       status: 404,
       headers: { "content-type": "application/json" },

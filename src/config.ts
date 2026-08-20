@@ -1,6 +1,7 @@
 export interface Env {
   DB: D1Database;
   SNAPSHOTS: R2Bucket;
+  ASSETS: Fetcher;
   API_TOKEN: string;
   MCP_MAX_CONTENT_BYTES?: string;
 }
