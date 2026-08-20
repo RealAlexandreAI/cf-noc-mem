@@ -1,84 +1,124 @@
-# cf-noc-mem
+# Noc Memory (cf-noc-mem)
 
-nocturne_memory, but on Cloudflare — a stateless MCP memory server for single-user AI agents.
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/RealAlexandreAI/cf-noc-mem)
 
-- **Stateless MCP (Streamable HTTP, MCP v2)**: no SSE, no long-lived sessions
-- **D1 (SQLite)**: memory graph (nodes / versioned memories / edges / paths) + FTS5 trigram CJK search
-- **R2**: snapshots & backups (planned)
-- **Zero VPS**: everything inside Cloudflare free tier
+A stateless, single-user **long-term memory server** for AI agents, running entirely on Cloudflare's free tier. No VPS, no database server, no vector store — just a Worker + D1 + R2.
+
+> Based on the upstream [nocturne_memory](https://github.com/Dataojitori/nocturne_memory) memory-graph concept, rewritten serverless and stripped to what one person actually needs. Also available as agent plugins: [dsh-noc-memory](https://github.com/RealAlexandreAI/dsh-noc-memory) · [pi-noc-memory](https://github.com/RealAlexandreAI/pi-noc-memory).
 
 ## Why
 
-The upstream [nocturne_memory](https://github.com/Dataojitori/nocturne_memory) is a Python/FastAPI app (~12K LOC backend) with SSE transport, Neo4j support, multi-namespace isolation and a web admin UI — all of which a single user doesn't need. This rewrite keeps the graph memory core and MCP tool surface, drops the rest, and runs it serverless.
+Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treats memory as a **hierarchical tree** (`noc://agent`, `noc://agent/deploy_pipeline`, …) with versioned content, trigger keywords, and audit rollback — so an agent can explore, update, and even correct its own past knowledge.
 
-## MCP tools (upstream-compatible names & params)
+- **Zero infra**: Worker + D1 + R2, all inside Cloudflare's free tier
+- **Stateless MCP** (Streamable HTTP): no SSE, no sessions — agents just `POST /mcp`
+- **Tree memory**: `noc://` URIs, browse via `list_memories`
+- **Trigger recall**: keywords bound to memories rank above full-text search
+- **Foresight**: memories can carry an expiry — they auto-leave search when stale
+- **Daily briefing**: `system://briefing` — what changed, what's expiring, what's cold
+- **Audit + rollback**: every change is tracked; mistakes are undoable
+- **Auto-forget** ("dream"): cron drops old versions, expired content, and cold low-priority memories — no manual cleanup
 
-| tool | description |
-|------|-------------|
-| `read_memory(uri)` | read by URI; supports `system://boot`, `system://index/<domain>`, `system://recent[/N]` |
-| `create_memory(parent_uri, content, priority, disclosure)` | create under an existing parent |
-| `update_memory(uri, old_string?, new_string?, append?, priority?, disclosure?)` | new versioned row, old row deprecated |
-| `delete_memory(uri)` | cut URI path; returns orphaned children if any |
-| `add_alias(new_uri, target_uri, priority, disclosure)` | alias path to the same node |
-| `search_memory(query, limit?)` | FTS5 trigram (>=3 chars) with LIKE fallback for short CJK queries |
+## MCP tools (9)
+
+| tool | purpose |
+|------|---------|
+| `read_memory(uri)` | read by URI; also `system://boot`, `system://briefing`, `system://index/<domain>`, `system://recent[/N]` |
+| `list_memories(uri, limit?)` | browse child memories under a URI |
+| `create_memory(parent_uri, content, priority, disclosure, expires_at?)` | create under an existing parent |
+| `update_memory(uri, append?/old_string+new_string?, priority?, disclosure?, expires_at?, relation?)` | new versioned row; `relation` marks evolution: `replace|enrich|confirm|challenge` |
+| `delete_memory(uri)` | cut a URI path; returns orphaned children if any |
+| `add_alias(new_uri, target_uri, …)` | another path to the same memory |
+| `search_memory(query, limit?)` | trigger-keyword recall first, then FTS5 trigram (CJK-friendly), LIKE fallback |
+| `rollback_memory(audit_id)` | undo a change from the audit log |
 | `manage_triggers(action, keyword, target_uri?)` | add / remove / list trigger keywords |
 
-## Architecture
+## Deploy to your own Cloudflare
 
-```
-agent (MCP client) ──POST /mcp──▶ CF Worker (stateless JSON-RPC)
-                                     ├── D1   nodes/memories/edges/paths + search_fts + audit_logs
-                                     └── R2   snapshots/backups (planned)
-```
+### 1. Prerequisites
 
-## Local dev
+- [Cloudflare account](https://dash.cloudflare.com) with **Workers Paid** (D1 + R2 are not on the forever-free plan)
+- [wrangler](https://developers.cloudflare.com/workers/wrangler/) CLI, logged in
+- A domain you can add a DNS record to (or use the default `*.workers.dev`)
+
+### 2. Clone & install
 
 ```bash
+git clone https://github.com/RealAlexandreAI/cf-noc-mem.git
+cd cf-noc-mem
 npm install
-echo "API_TOKEN=dev-token" > .dev.vars
-npx wrangler d1 migrations apply noc_mem --local
-npx wrangler dev
-curl -X POST http://127.0.0.1:8787/mcp \
-  -H "Authorization: Bearer dev-token" -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
 ```
 
-## Deploy
+### 3. Configure
 
 ```bash
-npx wrangler d1 create noc_mem        # fill database_id into wrangler.jsonc
+# your secret MCP bearer token (agents authenticate with it)
+echo -n "$(openssl rand -hex 24)" | npx wrangler secret put API_TOKEN
+
+# local dev token (only for npx wrangler dev)
+echo "API_TOKEN=dev-token" > .dev.vars
+```
+
+### 4. Provision D1 + R2
+
+```bash
+# create database + bucket, then wire the ids into wrangler.jsonc
+npx wrangler d1 create noc_mem
 npx wrangler r2 bucket create noc-mem-snapshots
 npx wrangler d1 migrations apply noc_mem --remote
-npx wrangler deploy                   # set API_TOKEN via wrangler secret put
 ```
 
-## Status
+Update `wrangler.jsonc`: fill `d1_databases[0].database_id` and `r2_buckets[0].bucket_name` with the values printed above.
 
-- [x] MCP core: initialize / tools/list / tools/call, 7 tools, Bearer auth
-- [x] D1 schema + FTS5 trigram CJK search (verified locally + remote D1)
-- [x] PG → D1 migration (`scripts/migrate_pg_to_d1.py`, run on host with PG access; import via `wrangler d1 execute --remote --file=`)
-- [x] FTS rebuild endpoint `POST /admin/rebuild-search` (run after import)
-- [x] R2 snapshots: daily cron `0 3 * * *` + manual `POST /admin/snapshot`
-- [x] Web panel at `/admin/` (boot list + full-text search, token via localStorage, behind CF Access)
-- [ ] Custom domain DNS activation (`REPLACE_WITH_YOUR_DOMAIN` route created, zone DNS record pending)
-- [ ] Admin panel: review / rollback
+### 5. Deploy
 
-## Authentication (two-mode, zero config)
-
-| endpoint | default (open source) | personal upgrade |
-|----------|----------------------|------------------|
-| `/mcp` | **Bearer** `Authorization: Bearer $API_TOKEN` (required) | keep Bearer; or migrate to OAuth 2.1 + PKCE later |
-| `/admin` (UI) + `/admin/*` (API) | UI shell public (no data, reads go through `/mcp`); API needs Bearer | **one Cloudflare Access app** on `REPLACE_WITH_YOUR_DOMAIN/admin` — UI and admin both sit behind your login |
-
-The admin check is dual-mode: if Cloudflare Access validated the request (header present, injected by the edge — clients cannot forge it), it passes; otherwise it falls back to Bearer. No extra env needed.
-
-**Personal setup** (API, one app, no `/mcp` impact): Zero Trust → Access → Applications → self-hosted app with domain `REPLACE_WITH_YOUR_DOMAIN/admin` → policy allow your email(s). Path-scoped apps don't cover `/mcp`, so agents reach it directly with Bearer. For scripted admin calls from behind Access, use a [service token](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/).
-
-Set the token:
 ```bash
-echo -n "$(openssl rand -hex 24)" | npx wrangler secret put API_TOKEN
+npm run build --prefix frontend   # build the admin panel
+npx wrangler deploy
 ```
 
-## Privacy
+### 6. Point your domain (optional)
 
-Public repo. No secrets in git: API token lives in `wrangler secret put API_TOKEN`; PG credentials are read from env at migration time. `.dev.vars` is gitignored.
+Workers automatically get `https://<worker-name>.<your-subdomain>.workers.dev`. For a custom domain like `mem.example.com`, add a CNAME record pointing to your worker's `*.workers.dev` host, then in the dashboard: Worker → Settings → Domains & Routes → Add → Custom Domain.
+
+### 7. Verify
+
+```bash
+# MCP handshake (Bearer auth)
+curl -X POST https://mem.example.com/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+
+# admin panel (data API is Bearer or, optionally, Cloudflare Access)
+open https://mem.example.com/
+```
+
+### 8. Protect the admin panel (recommended)
+
+The web panel at `/` is a UI shell; the real data API (`/admin/api/*`) requires your Bearer token. For personal use, put the whole site behind **Cloudflare Access**:
+
+- Zero Trust → Access → Applications → Add → self-hosted
+- Domain: `mem.example.com/admin` → policy: allow your email(s)
+- `/mcp` stays outside Access — agents reach it with Bearer only
+
+## Frontend
+
+A React admin panel (Vite) at `frontend/`: memory tree browser, review & rollback of pending changes, search, trigger management. Served by the Worker's assets binding.
+
+## Tests
+
+```bash
+npm test            # unit tests (vitest)
+npm run test:e2e    # optional: local + remote D1 flow checks
+```
+
+## License
+
+MIT — fork it, deploy it, make it yours.
+
+## Related
+
+- [dsh-noc-memory](https://github.com/RealAlexandreAI/dsh-noc-memory) — dsh plugin (nocturne-style agent memory tools for dsh)
+- [pi-noc-memory](https://github.com/RealAlexandreAI/pi-noc-memory) — pi extension (session-start boot + memory tools)
+- [nocturne_memory](https://github.com/Dataojitori/nocturne_memory) — the upstream project this is derived from
