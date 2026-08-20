@@ -43,7 +43,7 @@ Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treat
 
 ### 1. Prerequisites
 
-- [Cloudflare account](https://dash.cloudflare.com) with **Workers Paid** (D1 + R2 are not on the forever-free plan)
+- [Cloudflare account](https://dash.cloudflare.com) — the **free plan works**: this project is designed to fit the free tier (Workers 100k req/day, D1 5 GB, R2 10 GB). No paid upgrade needed for personal use.
 - [wrangler](https://developers.cloudflare.com/workers/wrangler/) CLI, logged in
 - A domain you can add a DNS record to (or use the default `*.workers.dev`)
 
