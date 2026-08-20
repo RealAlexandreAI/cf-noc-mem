@@ -281,7 +281,7 @@ function openAudit(id) {
       '<div class="diff"><div class="lbl">before</div><pre>' + esc(before) + '</pre></div>' +
       '<div class="diff"><div class="lbl">after</div><pre>' + esc(after) + '</pre></div>' +
       '<div class="actions"><button class="btn danger" onclick="doRollback(' + a.id + ')">Rollback</button>' +
-      '<button class="btn ghost" onclick="setView(\'review\')">Back</button></div>';
+      '<button class="btn ghost" onclick="setView(\\'review\\')">Back</button></div>';
   }).catch(fail);
 }
 
@@ -289,18 +289,18 @@ function doRollback(id) {
   if (!window.confirm("Rollback audit #" + id + "?")) return;
   skeleton();
   api("/admin/audit/" + id + "/rollback", { method: "POST" }).then(function (r) {
-    OUT.innerHTML = '<div class="item"><div class="body">' + esc(r.message) + '</div></div><div class="actions"><button class="btn ghost" onclick="setView(\'review\')">Back to review</button></div>';
+    OUT.innerHTML = '<div class="item"><div class="body">' + esc(r.message) + '</div></div><div class="actions"><button class="btn ghost" onclick="setView(\\'review\\')">Back to review</button></div>';
   }).catch(fail);
 }
 
 function doSnapshot() {
   skeleton(); api("/admin/snapshot", { method: "POST" }).then(function (r) {
-    OUT.innerHTML = '<div class="item"><div class="body">snapshot: ' + esc(r.key) + '</div></div><div class="actions"><button class="btn ghost" onclick="setView(\'maintenance\')">Back</button></div>';
+    OUT.innerHTML = '<div class="item"><div class="body">snapshot: ' + esc(r.key) + '</div></div><div class="actions"><button class="btn ghost" onclick="setView(\\'maintenance\\')">Back</button></div>';
   }).catch(fail);
 }
 function doRebuild() {
   skeleton(); api("/admin/rebuild-search", { method: "POST" }).then(function () {
-    OUT.innerHTML = '<div class="item"><div class="body">search index rebuilt</div></div><div class="actions"><button class="btn ghost" onclick="setView(\'maintenance\')">Back</button></div>';
+    OUT.innerHTML = '<div class="item"><div class="body">search index rebuilt</div></div><div class="actions"><button class="btn ghost" onclick="setView(\\'maintenance\\')">Back</button></div>';
   }).catch(fail);
 }
 
