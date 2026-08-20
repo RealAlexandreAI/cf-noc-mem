@@ -38,7 +38,7 @@
   <rect x="380" y="196" width="360" height="104" rx="12" fill="#141830" stroke="#262c50" stroke-width="2"/>
   <text x="404" y="228" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" fill="#c3b6ff">POST /mcp</text>
   <text x="404" y="254" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="16" fill="#9aa7b8">stateless · no SSE · no sessions</text>
-  <text x="404" y="278" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="16" fill="#6366f1">9 tools · Bearer-gated</text>
+  <text x="404" y="278" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="16" fill="#6366f1">10 tools · Bearer-gated</text>
 
   <!-- daily briefing card -->
   <rect x="772" y="196" width="364" height="104" rx="12" fill="#141830" stroke="#262c50" stroke-width="2"/>
