@@ -27,6 +27,9 @@ export function checkAuth(req: Request, env: Env): Response | null {
   }
 
   if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
+    // UI shell (GET /admin/) is public HTML (no data); data & actions need auth.
+    const isUi = req.method === "GET" && (url.pathname === "/admin" || url.pathname === "/admin/");
+    if (isUi) return null;
     if (req.headers.get(ACCESS_EMAIL_HEADER)) return null; // CF Access already validated
     return bearerOk ? null : unauthorized();
   }

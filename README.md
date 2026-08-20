@@ -59,7 +59,7 @@ npx wrangler deploy                   # set API_TOKEN via wrangler secret put
 - [x] PG → D1 migration (`scripts/migrate_pg_to_d1.py`, run on host with PG access; import via `wrangler d1 execute --remote --file=`)
 - [x] FTS rebuild endpoint `POST /admin/rebuild-search` (run after import)
 - [x] R2 snapshots: daily cron `0 3 * * *` + manual `POST /admin/snapshot`
-- [x] Read-only web panel `GET /` (boot list + full-text search, token via localStorage)
+- [x] Web panel at `/admin/` (boot list + full-text search, token via localStorage, behind CF Access)
 - [ ] Custom domain DNS activation (`REPLACE_WITH_YOUR_DOMAIN` route created, zone DNS record pending)
 - [ ] Admin panel: review / rollback
 
@@ -68,17 +68,11 @@ npx wrangler deploy                   # set API_TOKEN via wrangler secret put
 | endpoint | default (open source) | personal upgrade |
 |----------|----------------------|------------------|
 | `/mcp` | **Bearer** `Authorization: Bearer $API_TOKEN` (required) | keep Bearer; or migrate to OAuth 2.1 + PKCE later |
-| `/admin/*` | **Bearer** (same token) | **Cloudflare Access** — protect `/admin/*` as an Access application; the Worker trusts the `Cf-Access-Authenticated-User-Email` header and skips Bearer |
-| `/` (web panel) | public HTML shell — **no data in the page**; every read goes through `/mcp` with Bearer | separate Access application for `/` — the panel then requires login like admin |
+| `/admin` (UI) + `/admin/*` (API) | UI shell public (no data, reads go through `/mcp`); API needs Bearer | **one Cloudflare Access app** on `REPLACE_WITH_YOUR_DOMAIN/admin` — UI and admin both sit behind your login |
 
-The admin/panel check is dual-mode: if Cloudflare Access validated the request (header present, injected by the edge — clients cannot forge it), it passes; otherwise it falls back to Bearer. No extra env needed.
+The admin check is dual-mode: if Cloudflare Access validated the request (header present, injected by the edge — clients cannot forge it), it passes; otherwise it falls back to Bearer. No extra env needed.
 
-**For personal use, protect only the human surfaces — do NOT cover `/mcp`** (agents can't pass interactive login). Create two Access applications on the same hostname (Access matches the longest path prefix):
-
-- `https://REPLACE_WITH_YOUR_DOMAIN/` → policy = your identity (web panel)
-- `https://REPLACE_WITH_YOUR_DOMAIN/admin/*` → policy = your identity (admin)
-
-Requests not matching any app (i.e. `/mcp`) are NOT intercepted — agents reach it directly with Bearer.
+**Personal setup** (API, one app, no `/mcp` impact): Zero Trust → Access → Applications → self-hosted app with domain `REPLACE_WITH_YOUR_DOMAIN/admin` → policy allow your email(s). Path-scoped apps don't cover `/mcp`, so agents reach it directly with Bearer. For scripted admin calls from behind Access, use a [service token](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/).
 
 Set the token:
 ```bash

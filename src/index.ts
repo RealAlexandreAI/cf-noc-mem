@@ -32,7 +32,9 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
 
-    if (url.pathname === "/" && req.method === "GET") {
+    // Web panel lives under /admin so one Access app ("/admin/*") protects
+    // both the UI and admin API, leaving /mcp outside any Access app.
+    if ((url.pathname === "/admin" || url.pathname === "/admin/") && req.method === "GET") {
       return new Response(UI_HTML, { headers: { "content-type": "text/html; charset=utf-8" } });
     }
 
