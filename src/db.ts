@@ -339,7 +339,13 @@ export interface DeleteResult {
 export async function deleteMemory(db: D1Database, uri: string): Promise<DeleteResult> {
   const { domain, path } = parseUri(uri);
   const row = await resolvePathRow(db, domain, path);
-  if (!row || !row.node_uuid) return { deleted: false, message: "Path not found", orphanChildren: [] };
+  if (!row || !row.node_uuid) {
+    // path row is gone but the search index may still hold a ghost entry
+    // (e.g. a previous cleanup removed the path before the document) —
+    // remove it so the memory stops appearing in search.
+    await removeSearchDocument(db, domain, path);
+    return { deleted: false, message: "Path not found", orphanChildren: [] };
+  }
 
   const nodeUuid = row.node_uuid;
   const mem = await activeMemoryForNode(db, nodeUuid);

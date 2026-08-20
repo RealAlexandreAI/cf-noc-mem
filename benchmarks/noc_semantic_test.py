@@ -11,6 +11,7 @@ Verifies the memory system's designed behaviors against the LIVE instance:
 All test data is cleaned up afterwards.
 """
 import json
+import re
 import sys
 import time
 import urllib.request
@@ -76,7 +77,7 @@ def main():
     # ---- T3/T6: expiry lifecycle -----------------------------------------
     past = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 3600))
     txt, err = call("create_memory", {"parent_uri": "noc://", "content": f"semantic expiry test {uid}", "disclosure": "temp", "priority": 4, "expires_at": past})
-    uri = (txt or "").split("\n")[0].replace("Created: ", "")
+    uri = re.sub(r"\s*\(audit \d+\)$", "", (txt or "").split("\n")[0].replace("Created: ", "")).strip()
     test_uris.append(uri)
     check("T3a create with expires_at", "Created:" in (txt or "") and uri, uri)
 
@@ -89,7 +90,7 @@ def main():
 
     # ---- T1: trigger recall ----------------------------------------------
     txt, err = call("create_memory", {"parent_uri": "noc://", "content": f"semantic trigger target {uid}", "disclosure": "temp"})
-    tgt = (txt or "").split("\n")[0].replace("Created: ", "")
+    tgt = re.sub(r"\s*\(audit \d+\)$", "", (txt or "").split("\n")[0].replace("Created: ", "")).strip()
     test_uris.append(tgt)
     kw = f"zt-sem-{uid}"
     txt, _ = call("manage_triggers", {"action": "add", "keyword": kw, "target_uri": tgt})
