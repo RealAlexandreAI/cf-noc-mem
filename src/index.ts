@@ -1,6 +1,6 @@
 import { checkAuth } from "./auth";
 import { Env } from "./config";
-import { dbStatus, listAll, listAudit, searchMemory, syncSearchFromPaths, systemBoot, systemRecent } from "./db";
+import { dbStatus, getAudit, listAll, listAudit, rollbackMemory, searchMemory, syncSearchFromPaths, systemBoot, systemRecent } from "./db";
 import { handleMcpRequest } from "./mcp";
 import { UI_HTML } from "./ui";
 
@@ -90,6 +90,19 @@ export default {
     }
     if (url.pathname === "/admin/audit" && req.method === "GET") {
       return jsonOk({ entries: await listAudit(env.DB, 40) });
+    }
+    const auditDetail = /^\/admin\/audit\/(\d+)$/.exec(url.pathname);
+    if (auditDetail && req.method === "GET") {
+      const a = await getAudit(env.DB, Number(auditDetail[1]));
+      if (!a) return new Response(JSON.stringify({ error: "not found" }), { status: 404, headers: { "content-type": "application/json" } });
+      return jsonOk({ audit: a });
+    }
+    if (auditDetail && req.method === "POST" && url.pathname.endsWith("/rollback")) {
+      return jsonOk(await rollbackMemory(env.DB, Number(auditDetail[1])));
+    }
+    if (/^\/admin\/audit\/\d+\/rollback$/.test(url.pathname) && req.method === "POST") {
+      const id = Number(url.pathname.split("/")[3]);
+      return jsonOk(await rollbackMemory(env.DB, id));
     }
     if (url.pathname === "/admin/status" && req.method === "GET") {
       return jsonOk(await dbStatus(env.DB, env.SNAPSHOTS));

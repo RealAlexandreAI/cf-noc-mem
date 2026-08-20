@@ -561,6 +561,103 @@ export async function listAudit(db: D1Database, limit: number = 40): Promise<Aud
   return rows.results ?? [];
 }
 
+export interface AuditDetail extends AuditEntry {
+  before_json: string | null;
+  after_json: string | null;
+}
+
+export async function getAudit(db: D1Database, id: number): Promise<AuditDetail | null> {
+  return db
+    .prepare("SELECT id, op, uri, before_json, after_json, created_at FROM audit_logs WHERE id = ?")
+    .bind(id)
+    .first<AuditDetail>();
+}
+
+export interface RollbackResult {
+  ok: boolean;
+  message: string;
+}
+
+// Rollback based on the audit row's before_json (state prior to the mutation).
+//  create -> delete the uri (orphan-safe)
+//  update -> restore previous content as a new memory version
+//  delete -> re-insert node/memory/edge/path + search doc
+//  alias  -> remove the alias path row
+export async function rollbackMemory(db: D1Database, auditId: number): Promise<RollbackResult> {
+  const a = await getAudit(db, auditId);
+  if (!a) return { ok: false, message: "audit row not found" };
+
+  switch (a.op) {
+    case "create": {
+      if (!a.uri) return { ok: false, message: "create rollback needs uri" };
+      const r = await deleteMemory(db, a.uri);
+      return { ok: r.deleted, message: r.deleted ? `rolled back create: ${a.uri}` : r.message };
+    }
+    case "update": {
+      if (!a.uri) return { ok: false, message: "update rollback needs uri" };
+      const before = a.before_json ? JSON.parse(a.before_json) : null;
+      if (!before?.content) return { ok: false, message: "no prior content in audit" };
+      const row = await resolvePathRow(db, parseUri(a.uri).domain, parseUri(a.uri).path);
+      if (!row?.node_uuid) return { ok: false, message: "path gone" };
+      const cur = await activeMemoryForNode(db, row.node_uuid);
+      const now = nowSql();
+      if (cur) {
+        await db.prepare("UPDATE memories SET deprecated = 1, migrated_to = NULL WHERE id = ?").bind(cur.id).run();
+      }
+      const newId = await db
+        .prepare("INSERT INTO memories (node_uuid, content, deprecated, migrated_to, created_at) VALUES (?, ?, 0, NULL, ?)")
+        .bind(row.node_uuid, before.content, now)
+        .run()
+        .then((r) => Number(r.meta.last_row_id));
+      if (cur) await db.prepare("UPDATE memories SET migrated_to = ? WHERE id = ?").bind(newId, cur.id).run();
+      if (row.edge_id) {
+        const edge = await db.prepare("SELECT priority, disclosure FROM edges WHERE id = ?").bind(row.edge_id).first<{ priority: number; disclosure: string | null }>();
+        await upsertSearchDocument(db, parseUri(a.uri).domain, parseUri(a.uri).path, row.node_uuid, newId, before.content, edge?.disclosure ?? null, edge?.priority ?? 0);
+      }
+      await recordAudit(db, "update", a.uri, row.node_uuid, { memory_id: newId, content: before.content }, null);
+      return { ok: true, message: `rolled back update: ${a.uri}` };
+    }
+    case "delete": {
+      if (!a.uri || !a.before_json) return { ok: false, message: "delete rollback needs before state" };
+      const b = JSON.parse(a.before_json);
+      const { domain, path } = parseUri(a.uri);
+      const nodeUuid = b.node_uuid;
+      await db.prepare("INSERT OR IGNORE INTO nodes (uuid, created_at) VALUES (?, ?)").bind(nodeUuid, b.created_at ?? nowSql()).run();
+      const memId = b.memory_id ?? null;
+      if (memId) {
+        await db
+          .prepare("INSERT OR IGNORE INTO memories (id, node_uuid, content, deprecated, migrated_to, created_at) VALUES (?, ?, ?, 0, NULL, ?)")
+          .bind(memId, nodeUuid, b.content ?? "", b.created_at ?? nowSql())
+          .run();
+      }
+      // restore edge (if it was removed) and path
+      const edgeId = b.edge_id ?? null;
+      if (edgeId) {
+        await db
+          .prepare("INSERT OR IGNORE INTO edges (id, parent_uuid, child_uuid, name, priority, disclosure, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .bind(edgeId, b.parent_uuid ?? ROOT_NODE, nodeUuid, b.name ?? path.split("/").pop() ?? path, b.priority ?? 0, b.disclosure ?? null, b.created_at ?? nowSql())
+          .run();
+      }
+      await db
+        .prepare("INSERT OR IGNORE INTO paths (domain, path, edge_id, node_uuid, created_at) VALUES (?, ?, ?, ?, ?)")
+        .bind(domain, path, edgeId ?? b.edge_id ?? null, nodeUuid, nowSql())
+        .run();
+      await upsertSearchDocument(db, domain, path, nodeUuid, memId ?? 0, b.content ?? "", b.disclosure ?? null, b.priority ?? 0);
+      await recordAudit(db, "delete", a.uri, nodeUuid, null, { restored: true });
+      return { ok: true, message: `restored deleted memory: ${a.uri}` };
+    }
+    case "alias": {
+      if (!a.uri) return { ok: false, message: "alias rollback needs uri" };
+      const { domain, path } = parseUri(a.uri);
+      const del = await db.prepare("DELETE FROM paths WHERE domain = ? AND path = ?").bind(domain, path).run();
+      await db.prepare("DELETE FROM search_documents WHERE domain = ? AND path = ?").bind(domain, path).run();
+      return { ok: (del.meta.changes ?? 0) > 0, message: `removed alias: ${a.uri}` };
+    }
+    default:
+      return { ok: false, message: `rollback not supported for op: ${a.op}` };
+  }
+}
+
 export async function dbStatus(db: D1Database, snapshots: R2Bucket): Promise<Record<string, unknown>> {
   const counts = await db
     .prepare(
