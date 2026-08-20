@@ -92,11 +92,12 @@ async function recordAudit(
   before: unknown,
   after: unknown,
   relation?: string
-): Promise<void> {
-  await db
+): Promise<number> {
+  const r = await db
     .prepare("INSERT INTO audit_logs (op, node_uuid, uri, before_json, after_json, relation, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
     .bind(op, nodeUuid, uri, before === null ? null : JSON.stringify(before), JSON.stringify(after), relation ?? null, nowSql())
     .run();
+  return Number(r.meta.last_row_id);
 }
 
 // ===========================================================================
@@ -158,11 +159,25 @@ export interface CreateInput {
   disclosure: string | null;
   expiresAt?: string | null; // ISO time; memory auto-deprecates after this (Foresight)
   title?: string | null; // explicit path name; falls back to first line of content
+  maxContentBytes?: number;
 }
 
-export async function createMemory(db: D1Database, input: CreateInput): Promise<{ uri: string; content: string }> {
+export async function createMemory(db: D1Database, input: CreateInput): Promise<{ uri: string; content: string; audit_id: number }> {
   const { domain: parentDomain, path: parentPath } = parseUri(input.parentUri);
+  const maxBytes = input.maxContentBytes ?? 65536;
+
+  // validation: an empty memory (no title, no content) is a mistake
+  if (!input.title?.trim() && !input.content.trim()) {
+    throw new Error("content is empty");
+  }
+  if (input.content.length > maxBytes) {
+    throw new Error(`content too large (max ${maxBytes} bytes)`);
+  }
   const parent = await resolvePathRow(db, parentDomain, parentPath);
+  // creating under a non-root path that does not exist would build ghost hierarchy
+  if (parentPath && !parent?.node_uuid) {
+    throw new Error(`parent not found: ${input.parentUri}`);
+  }
   const parentNode = parent?.node_uuid ?? ROOT_NODE;
 
   // path name: explicit title wins; otherwise last segment of the first content line
@@ -192,13 +207,13 @@ export async function createMemory(db: D1Database, input: CreateInput): Promise<
     .run();
 
   await upsertSearchDocument(db, parentDomain, childPathFinal, nodeUuid, memoryId, input.content, input.disclosure, input.priority);
-  await recordAudit(db, "create", makeUri(parentDomain, childPathFinal), nodeUuid, null, {
+  const auditId = await recordAudit(db, "create", makeUri(parentDomain, childPathFinal), nodeUuid, null, {
     node_uuid: nodeUuid,
     memory_id: memoryId,
     edge_id: edgeId,
   });
 
-  return { uri: makeUri(parentDomain, childPathFinal), content: input.content };
+  return { uri: makeUri(parentDomain, childPathFinal), content: input.content, audit_id: auditId };
 }
 
 function slugify(title: string): string {
@@ -236,15 +251,17 @@ export interface UpdateInput {
   disclosure?: string | null;
   expiresAt?: string | null; // Foresight: set or clear (null keeps current? use "" to clear)
   relation?: string | null; // knowledge-evolution marker: replace|enrich|confirm|challenge
+  maxContentBytes?: number;
 }
 
-export async function updateMemory(db: D1Database, input: UpdateInput): Promise<ReadResult | null> {
+export async function updateMemory(db: D1Database, input: UpdateInput): Promise<(ReadResult & { audit_id?: number }) | null> {
   const { domain, path } = parseUri(input.uri);
   const row = await resolvePathRow(db, domain, path);
   if (!row || !row.node_uuid) return null;
 
   const cur = await activeMemoryForNode(db, row.node_uuid);
   if (!cur) return null;
+  const maxBytes = input.maxContentBytes ?? 65536;
 
   let content = cur.content;
   if (input.content != null) {
@@ -257,6 +274,9 @@ export async function updateMemory(db: D1Database, input: UpdateInput): Promise<
     } else {
       content = content.split(input.oldString).join(input.newString);
     }
+  }
+  if (content.length > maxBytes) {
+    throw new Error(`content too large (max ${maxBytes} bytes)`);
   }
 
   const now = nowSql();
@@ -290,7 +310,7 @@ export async function updateMemory(db: D1Database, input: UpdateInput): Promise<
   const finalDisclosure = input.disclosure ?? edge?.disclosure ?? null;
 
   await upsertSearchDocument(db, domain, path, row.node_uuid, newId, content, finalDisclosure, finalPriority);
-  await recordAudit(db, "update", input.uri, row.node_uuid, { memory_id: cur.id, content: cur.content }, { memory_id: newId, content }, input.relation ?? undefined);
+  const auditId = await recordAudit(db, "update", input.uri, row.node_uuid, { memory_id: cur.id, content: cur.content }, { memory_id: newId, content }, input.relation ?? undefined);
 
   return {
     uri: makeUri(domain, path),
@@ -301,6 +321,7 @@ export async function updateMemory(db: D1Database, input: UpdateInput): Promise<
     memory_id: newId,
     created_at: cur.created_at,
     updated_at: now,
+    audit_id: auditId,
   };
 }
 
@@ -312,6 +333,7 @@ export interface DeleteResult {
   deleted: boolean;
   message: string;
   orphanChildren: string[];
+  audit_id?: number | null;
 }
 
 export async function deleteMemory(db: D1Database, uri: string): Promise<DeleteResult> {
@@ -362,8 +384,8 @@ export async function deleteMemory(db: D1Database, uri: string): Promise<DeleteR
     // node still referenced by other paths/edges — drop just this path's index entry
     await removeSearchDocument(db, domain, path);
   }
-  await recordAudit(db, "delete", uri, nodeUuid, before, null);
-  return { deleted: true, message: "Deleted", orphanChildren: [] };
+  const auditId = await recordAudit(db, "delete", uri, nodeUuid, before, null);
+  return { deleted: true, message: "Deleted", orphanChildren: [], audit_id: auditId };
 }
 
 // ===========================================================================

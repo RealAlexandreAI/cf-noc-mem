@@ -1,4 +1,4 @@
-import { Env } from "./config";
+import { Env, maxContentBytes } from "./config";
 import {
   createMemory as dbCreate,
   deleteMemory,
@@ -110,7 +110,7 @@ export async function handleRest(req: Request, url: URL, env: Env): Promise<Resp
       }
       if (method === "PUT") {
         const b = body as { content?: string; priority?: number; disclosure?: string | null };
-        const r = await updateMemory(env.DB, { uri: `${domain}://${path}`, content: b.content ?? "", priority: b.priority ?? null, disclosure: b.disclosure ?? null });
+        const r = await updateMemory(env.DB, { uri: `${domain}://${path}`, content: b.content ?? "", priority: b.priority ?? null, disclosure: b.disclosure ?? null, maxContentBytes: maxContentBytes(env) });
         if (!r) return bad("not found", 404);
         return json({ success: true, memory_id: r.memory_id });
       }
@@ -123,6 +123,7 @@ export async function handleRest(req: Request, url: URL, env: Env): Promise<Resp
           content: b.content ?? "",
           priority: b.priority ?? 0,
           disclosure: b.disclosure ?? null,
+          maxContentBytes: maxContentBytes(env),
         });
         return json({ success: true, uri: r.uri, memory_id: 0 });
       }

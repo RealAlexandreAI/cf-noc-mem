@@ -1,4 +1,4 @@
-import { Env } from "./config";
+import { Env, maxContentBytes } from "./config";
 import {
   addAlias,
   createMemory,
@@ -241,8 +241,9 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
         priority: Number(args.priority ?? 0),
         disclosure: args.disclosure == null ? null : String(args.disclosure),
         expiresAt: args.expires_at == null ? null : String(args.expires_at),
+        maxContentBytes: maxContentBytes(env),
       });
-      return `Created: ${r.uri}\n\n${r.content}`;
+      return `Created: ${r.uri} (audit ${r.audit_id})\n\n${r.content}`;
     }
     case "update_memory": {
       const r = await updateMemory(db, {
@@ -255,12 +256,13 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
         disclosure: args.disclosure == null ? null : String(args.disclosure),
         expiresAt: args.expires_at == null ? undefined : String(args.expires_at),
         relation: args.relation == null ? null : String(args.relation),
+        maxContentBytes: maxContentBytes(env),
       });
-      return r ? `Updated: ${r.uri}\n\n${r.content}` : "Memory not found.";
+      return r ? `Updated: ${r.uri} (audit ${r.audit_id})\n\n${r.content}` : "Memory not found.";
     }
     case "delete_memory": {
       const r = await deleteMemory(db, String(args.uri ?? ""));
-      return r.deleted ? r.message : `${r.message}${r.orphanChildren.length ? `\nOrphaned children: ${r.orphanChildren.join(", ")}` : ""}`;
+      return r.deleted ? `${r.message} (audit ${r.audit_id})\n${r.orphanChildren.length ? `Orphaned children: ${r.orphanChildren.join(", ")}` : ""}`.trim() : `${r.message}${r.orphanChildren.length ? `\nOrphaned children: ${r.orphanChildren.join(", ")}` : ""}`;
     }
     case "add_alias": {
       const r = await addAlias(
