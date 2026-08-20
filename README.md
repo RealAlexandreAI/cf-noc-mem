@@ -40,6 +40,9 @@ Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treat
 | `search_memory(query, limit?)` | trigger-keyword recall first, then FTS5 trigram (CJK-friendly), LIKE fallback |
 | `rollback_memory(audit_id)` | undo a change from the audit log |
 | `manage_triggers(action, keyword, target_uri?)` | add / remove / list trigger keywords |
+| `rename_memory(uri, new_name)` | rename the last path segment (node & content stay, search re-indexed) |
+
+Also: `create_memory` accepts an explicit `title` (path name) so the content's first line is not eaten; REST API is reachable at `/api/*` with Bearer auth.
 
 ## Deploy to your own Cloudflare
 

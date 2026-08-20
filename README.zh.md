@@ -38,6 +38,9 @@
 | `search_memory(query, limit?)` | 先触发词召回，再 FTS5 trigram（对中文友好），最后 LIKE 兜底 |
 | `rollback_memory(audit_id)` | 从审计日志撤销一次变更 |
 | `manage_triggers(action, keyword, target_uri?)` | 添加 / 删除 / 列出触发关键词 |
+| `rename_memory(uri, new_name)` | 重命名最后一段路径（节点与内容不变，搜索索引重建） |
+
+另外：`create_memory` 支持显式 `title`（路径名），内容首行不再被吞；REST API 可通过 `/api/*` + Bearer 直接访问。
 
 ## 部署到自己的 Cloudflare
 
