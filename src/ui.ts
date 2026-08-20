@@ -5,7 +5,9 @@
 //   __STATUS_TEXT__ "access verified" | "bearer required"
 //   __STATUS_CLASS__ " ok" | ""
 //   __AUTH_ZONE_HTML__  pre-rendered banner or token form
-//   __BOOT_DATA__   JSON-encoded boot text, or the literal "null"
+//   __BOOT_DATA__   JSON-encoded boot text (or "null"), placed inside a
+//                   type="application/json" script tag so HTML/JS parsers
+//                   don't interfere with each other.
 export const UI_HTML = `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -140,13 +142,15 @@ export const UI_HTML = `<!DOCTYPE html>
     <div id="out"></div>
   </main>
 </div>
+<script type="application/json" id="bd">__BOOT_DATA__</script>
 <script>
 var MODE = "__AUTH_MODE__";
 var TOK = localStorage.getItem("nm-token") || "";
 var OUT = document.getElementById("out");
 var Q = document.getElementById("q");
 var SECTION = document.getElementById("sectionLabel");
-var BOOT = __BOOT_DATA__;
+var BOOT_RAW = document.getElementById("bd").textContent;
+var BOOT = BOOT_RAW === "null" ? null : JSON.parse(BOOT_RAW);
 if (BOOT !== null) renderBoot(BOOT);
 else skeleton();
 
