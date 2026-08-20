@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useLocale } from '../../i18n/useLocale';
+import { displayUri } from '../../lib/utils';
 
 function ReviewPage() {
   const { t } = useLocale();
@@ -272,7 +273,7 @@ function ReviewPage() {
                 </div>
                 <div className="min-w-0 flex flex-col">
                   <h2 className="text-lg font-medium text-slate-100 truncate tracking-tight flex items-center gap-3">
-                    <span>{selectedChange.display_uri}</span>
+                    <span>{displayUri(selectedChange.display_uri)}</span>
                     {selectedChange.namespaces && selectedChange.namespaces.length > 0 && selectedChange.namespaces.some(ns => ns !== "" || selectedChange.namespaces.length > 1) && (
                       <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 tracking-widest font-mono uppercase">
                         {selectedChange.namespaces.map(ns => ns === "" ? t('review.namespace.default') : ns).join(', ')}
@@ -359,7 +360,7 @@ function ReviewPage() {
                                 <span className="text-emerald-500/80 bg-emerald-500/10 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">{t('review.path.added')}</span>
                               )}
                               <span className={clsx("font-mono text-xs break-all", pc.action === 'deleted' ? "text-rose-400/70 line-through" : "text-emerald-400")}>
-                                {pc.uri}
+                                {displayUri(pc.uri)}
                               </span>
                               {pc.namespace !== undefined && pc.namespace !== null && (pc.namespace !== "" || (selectedChange.namespaces && selectedChange.namespaces.some(n => n !== "" || selectedChange.namespaces.length > 1))) && (
                                     <span className="ml-auto text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 tracking-wider font-mono">

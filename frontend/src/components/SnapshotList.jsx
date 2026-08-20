@@ -1,6 +1,7 @@
 import React from 'react';
 import clsx from 'clsx';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from "react-i18next";
+import { displayUri } from "../lib/utils";
 
 const getActionColor = (action) => {
   if (action === 'created') return 'emerald';
@@ -86,7 +87,7 @@ const SnapshotList = ({ snapshots, selectedId, onSelect }) => {
                   "font-medium text-xs truncate transition-colors flex items-center gap-2",
                   isSelected ? "text-slate-200" : "text-slate-400 group-hover:text-slate-300"
                 )}>
-                  <span className="truncate">{item.display_uri}</span>
+                  <span className="truncate">{displayUri(item.display_uri)}</span>
                   {getNamespacesLabel(item.namespaces) && (
                     <span className="flex-shrink-0 text-[9px] px-1 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 tracking-wider font-mono">
                       {getNamespacesLabel(item.namespaces)}

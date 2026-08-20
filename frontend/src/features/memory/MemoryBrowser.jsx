@@ -19,6 +19,7 @@ import {
 import clsx from 'clsx';
 import { api, getSettingsBootUris, toggleSettingsBootUri, deleteNode, searchMemories, createMemory, renameNode } from '../../lib/api';
 import { toast } from '../../components/Toast';
+import { displayUri } from '../../lib/utils';
 import { useLocale } from '../../i18n/useLocale';
 import CreateMemoryModal from './components/CreateMemoryModal';
 import AliasManager from './components/AliasManager';
@@ -238,7 +239,7 @@ export default function MemoryBrowser() {
 
   const isRoot = !path;
   const node = data.node;
-  const currentUri = `${domain}://${path}`;
+  const currentUri = displayUri(`${domain}://${path}`);
 
   return (
     <div className="flex h-full bg-[#05050A] text-slate-300 font-sans selection:bg-indigo-500/30 selection:text-indigo-200 overflow-hidden">
@@ -278,7 +279,7 @@ export default function MemoryBrowser() {
                     <span>{t('memory.sidebar.current_path')}</span>
                  </div>
                  <code className="block text-[10px] font-mono text-indigo-300/80 break-all leading-tight">
-                    {domain}://{path || 'root'}
+                    {displayUri(`${domain}://${path || 'root'}`)}
                  </code>
              </div>
         </div>
@@ -334,7 +335,7 @@ export default function MemoryBrowser() {
                        <span className="text-sm font-semibold text-slate-300 group-hover:text-indigo-200 transition-colors">{item.name}</span>
                        <PriorityBadge priority={item.priority} />
                      </div>
-                     <code className="text-[11px] font-mono text-slate-600 block mb-1.5">{item.uri}</code>
+                     <code className="text-[11px] font-mono text-slate-600 block mb-1.5">{displayUri(item.uri)}</code>
                      {item.snippet && <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{item.snippet}</p>}
                      {item.disclosure && (
                        <p className="text-[11px] text-amber-500/70 mt-1.5 flex items-center gap-1">

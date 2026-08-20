@@ -6,7 +6,8 @@
       "review": "Review & Audit",
       "memory": "Memory Explorer",
       "maintenance": "Brain Cleanup",
-      "settings": "Settings"
+      "settings": "Settings",
+      "language": "Language"
     },
     "settings": {
       "title": "Settings",

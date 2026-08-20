@@ -853,3 +853,57 @@ export async function syncSearchFromPaths(db: D1Database): Promise<void> {
   }
   return;
 }
+
+export interface ForgetResult {
+  deprecated_removed: number;
+  orphans_removed: number;
+}
+
+/**
+ * Automatic "dream" cleanup, run by the scheduled handler:
+ *  1. Drop deprecated memory versions older than FORGET_DEPRECATED_DAYS (default 30).
+ *     Old versions are superseded by newer content; audit_logs keep before/after
+ *     snapshots so rollback still works after the row is gone.
+ *  2. Drop nodes that lost every path reference AND have no children/edges left
+ *     (true orphans: unreachable from the tree). Their audit trail remains.
+ *  3. Rebuild search index afterwards (orphan rows may have been indexed).
+ */
+export async function autoForget(db: D1Database): Promise<ForgetResult> {
+  const deprecatedDays = 30;
+  const cutoff = new Date(Date.now() - deprecatedDays * 86400_000).toISOString().slice(0, 19).replace("T", " ");
+
+  // 1. old deprecated versions (migrated_to IS NOT NULL keeps lineage visible; drop when old)
+  const dep = await db
+    .prepare("DELETE FROM memories WHERE deprecated = 1 AND created_at < ?")
+    .bind(cutoff)
+    .run();
+
+  // 2. orphans: nodes with no path, no incoming/outgoing edges, not the root sentinel
+  const orphans = await db
+    .prepare(
+      `SELECT n.uuid
+       FROM nodes n
+       WHERE n.uuid != ?
+         AND NOT EXISTS (SELECT 1 FROM paths p WHERE p.node_uuid = n.uuid)
+         AND NOT EXISTS (SELECT 1 FROM edges e WHERE e.parent_uuid = n.uuid OR e.child_uuid = n.uuid)`
+    )
+    .bind(ROOT_NODE)
+    .all<{ uuid: string }>();
+
+  let orphanCount = 0;
+  for (const o of orphans.results ?? []) {
+    await db.prepare("DELETE FROM memories WHERE node_uuid = ?").bind(o.uuid).run();
+    await db.prepare("DELETE FROM nodes WHERE uuid = ?").bind(o.uuid).run();
+    orphanCount++;
+  }
+
+  // 3. search index may reference dropped orphan content
+  if (orphanCount > 0) {
+    await syncSearchFromPaths(db);
+  }
+
+  return {
+    deprecated_removed: dep.meta.changes ?? 0,
+    orphans_removed: orphanCount,
+  };
+}

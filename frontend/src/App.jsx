@@ -1,19 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { ShieldCheck, Database, LayoutGrid, Sparkles, AlertCircle, Settings } from 'lucide-react';
+import { ShieldCheck, Database, LayoutGrid, Sparkles, AlertCircle, Languages } from 'lucide-react';
 import clsx from 'clsx';
 
 import ReviewPage from './features/review/ReviewPage';
 import MemoryBrowser from './features/memory/MemoryBrowser';
 import MaintenancePage from './features/maintenance/MaintenancePage';
-import SettingsDrawer from './features/settings/SettingsDrawer';
 import TokenAuth from './components/TokenAuth';
 import { ToastContainer } from './components/Toast';
 import { AUTH_ERROR_EVENT } from './lib/api';
 import { detectLocale } from './i18n/index';
 import { Button } from './components/ui/button';
 import { cn } from './lib/utils';
+import i18n from './i18n';
 
 const consumeTokenFromUrl = () => {
   const params = new URLSearchParams(window.location.search);
@@ -67,15 +67,16 @@ function Layout() {
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-4">
+        <div className="ml-auto flex items-center gap-1">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => window.dispatchEvent(new CustomEvent('open-settings'))}
+            onClick={() => i18n.changeLanguage(i18n.resolvedLanguage === 'zh' ? 'en' : 'zh')}
             className="text-muted-foreground hover:text-foreground"
+            title={t('app.nav.language')}
           >
-            <Settings size={16} />
-            {t('app.nav.settings')}
+            <Languages size={16} />
+            {i18n.resolvedLanguage === 'zh' ? 'EN' : '中'}
           </Button>
         </div>
       </div>
@@ -85,6 +86,10 @@ function Layout() {
         <Routes>
           <Route path="/" element={<Navigate to="/review" replace />} />
 
+          {/* /admin was the old panel URL (pre-SPA); redirect to keep old links working */}
+          <Route path="/admin" element={<Navigate to="/" replace />} />
+          <Route path="/admin/*" element={<Navigate to="/" replace />} />
+
           <Route path="/review" element={<ReviewPage />} />
 
           <Route path="/memory" element={<MemoryBrowser />} />
@@ -93,7 +98,6 @@ function Layout() {
         </Routes>
       </div>
 
-      <SettingsDrawer />
       <ToastContainer />
     </div>
   );

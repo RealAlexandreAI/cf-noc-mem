@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { BookOpen, X } from 'lucide-react';
 import clsx from 'clsx';
-import { useLocale } from '../../../i18n/useLocale';
+import { useLocale } from "../../../i18n/useLocale";
+import { displayUri } from "../../../lib/utils";
 
 function findAllOccurrences(text, keywords) {
   if (!keywords || keywords.length === 0 || !text) return [];
@@ -89,7 +90,7 @@ const GlossaryPopup = ({ keyword, nodes, position, onClose, onNavigate }) => {
                 "text-[11px] font-mono block truncate flex-1",
                 isUnlinked ? "text-slate-500" : "text-indigo-400/80 group-hover:text-indigo-300"
               )}>
-                {node.uri}
+                {displayUri(node.uri)}
               </code>
               {isUnlinked && (
                 <span className="text-[9px] px-1.5 py-0.5 bg-rose-950/40 text-rose-400 border border-rose-900/50 rounded flex-shrink-0">

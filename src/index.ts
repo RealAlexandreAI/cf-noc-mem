@@ -1,6 +1,6 @@
 import { checkAuth } from "./auth";
 import { Env } from "./config";
-import { dbStatus, getAudit, listAll, listAudit, rollbackMemory, searchMemory, syncSearchFromPaths, systemBoot, systemRecent } from "./db";
+import { autoForget, dbStatus, getAudit, listAll, listAudit, rollbackMemory, searchMemory, syncSearchFromPaths, systemBoot, systemRecent } from "./db";
 import { handleMcpRequest } from "./mcp";
 import { handleRest } from "./rest";
 
@@ -32,7 +32,12 @@ async function jsonOk(body: unknown): Promise<Response> {
 
 export default {
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+    // Daily 03:00 snapshot; "dream" cleanup (auto-forget) every ~7 days.
     await takeSnapshot(env);
+    const dayOfMonth = new Date().getUTCDate();
+    if (dayOfMonth % 7 === 1) {
+      await autoForget(env.DB);
+    }
   },
 
   async fetch(req: Request, env: Env): Promise<Response> {

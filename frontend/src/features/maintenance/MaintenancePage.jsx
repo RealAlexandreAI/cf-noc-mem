@@ -11,6 +11,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import PromptModal from '../../components/PromptModal';
 import { api } from '../../lib/api';
 import { useLocale } from '../../i18n/useLocale';
+import { displayUri } from '../../lib/utils';
 
 export default function MaintenancePage() {
   const { t } = useLocale();
@@ -860,7 +861,7 @@ const RestoreForm = ({ memoryId, onCancel, onSuccess }) => {
         priority: priority,
         disclosure: disclosure.trim() || undefined,
       });
-      toast(t('maintenance.detail.restore_success_toast', { uri: `${domain}://${fullPath}` }), 'success');
+      toast(t('maintenance.detail.restore_success_toast', { uri: displayUri(`${domain}://${fullPath}`) }), 'success');
       onSuccess();
     } catch (err) {
       const errMsg = err.response?.data?.detail || err.message;
