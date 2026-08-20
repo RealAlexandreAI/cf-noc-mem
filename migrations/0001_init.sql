@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS memories (
   content     TEXT NOT NULL,
   deprecated  INTEGER NOT NULL DEFAULT 0,
   migrated_to INTEGER,
+  expires_at TEXT,
   created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_memories_node ON memories(node_uuid);
@@ -91,6 +92,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   uri         TEXT,
   before_json TEXT,                   -- serialized rows prior to mutation
   after_json  TEXT,
+  relation    TEXT,
   created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_audit_node ON audit_logs(node_uuid);

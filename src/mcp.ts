@@ -9,6 +9,7 @@ import {
   rollbackMemory,
   searchMemory,
   systemBoot,
+  systemBriefing,
   systemIndex,
   systemRecent,
   updateMemory,
@@ -27,7 +28,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "read_memory",
     description:
-      "Reads a memory by URI. Special system URIs: system://boot (boot memories), system://index/<domain>, system://recent[/N].",
+      "Reads a memory by URI. Special system URIs: system://boot (boot memories), system://index/<domain>, system://recent[/N], system://briefing (daily working-memory briefing).",
     inputSchema: {
       type: "object",
       properties: { uri: { type: "string", description: "Memory URI, e.g. noc://agent/foo or system://recent/5" } },
@@ -36,7 +37,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "create_memory",
-    description: "Creates a memory under an existing parent URI. Requires read_memory on parent first.",
+    description: "Creates a memory under an existing parent URI. Requires read_memory on parent first. Optional expires_at (ISO) makes the memory auto-deprecate (Foresight).",
     inputSchema: {
       type: "object",
       properties: {
@@ -44,13 +45,14 @@ const TOOLS: ToolDef[] = [
         content: { type: "string", description: "Detailed text content of the memory" },
         priority: { type: "integer", minimum: 0, description: "Retrieval priority, lower first (1,2,3)" },
         disclosure: { type: "string", description: "Optional disclosure note" },
+        expires_at: { type: "string", description: "ISO datetime; memory auto-leaves search after this" },
       },
       required: ["parent_uri", "content"],
     },
   },
   {
     name: "update_memory",
-    description: "Updates a memory to a new version. Must read_memory(uri) first. Supports append or old_string->new_string block replace.",
+    description: "Updates a memory to a new version. Must read_memory(uri) first. Supports append or old_string->new_string block replace. relation marks knowledge evolution: replace|enrich|confirm|challenge.",
     inputSchema: {
       type: "object",
       properties: {
@@ -60,6 +62,8 @@ const TOOLS: ToolDef[] = [
         append: { type: "string", description: "Text to append to the end" },
         priority: { type: "integer", minimum: 0 },
         disclosure: { type: "string" },
+        expires_at: { type: "string", description: "ISO datetime to expire, or \"\" to clear" },
+        relation: { type: "string", enum: ["replace", "enrich", "confirm", "challenge"], description: "Knowledge-evolution relation to previous version" },
       },
       required: ["uri"],
     },
@@ -201,6 +205,7 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
         content: String(args.content ?? ""),
         priority: Number(args.priority ?? 0),
         disclosure: args.disclosure == null ? null : String(args.disclosure),
+        expiresAt: args.expires_at == null ? null : String(args.expires_at),
       });
       return `Created: ${r.uri}\n\n${r.content}`;
     }
@@ -212,6 +217,8 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
         append: args.append == null ? null : String(args.append),
         priority: args.priority == null ? null : Number(args.priority),
         disclosure: args.disclosure == null ? null : String(args.disclosure),
+        expiresAt: args.expires_at == null ? undefined : String(args.expires_at),
+        relation: args.relation == null ? null : String(args.relation),
       });
       return r ? `Updated: ${r.uri}\n\n${r.content}` : "Memory not found.";
     }
@@ -261,6 +268,7 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
 async function handleSystemUri(db: D1Database, uri: string): Promise<string> {
   const rest = uri.replace(/^system:\/\//, "");
   if (rest === "boot") return systemBoot(db);
+  if (rest === "briefing") return systemBriefing(db);
   if (rest.startsWith("index/")) {
     const items = await systemIndex(db, rest.slice("index/".length));
     return items.map((i) => `${i.uri}: ${i.title}`).join("\n") || "(empty)";

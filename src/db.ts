@@ -41,12 +41,13 @@ interface MemoryRow {
   deprecated: number;
   migrated_to: number | null;
   created_at: string;
+  expires_at?: string | null;
 }
 
 async function activeMemoryForNode(db: D1Database, nodeUuid: string): Promise<MemoryRow | null> {
   return db
     .prepare(
-      "SELECT id, node_uuid, content, deprecated, migrated_to, created_at FROM memories WHERE node_uuid = ? AND deprecated = 0 ORDER BY id DESC LIMIT 1"
+      "SELECT id, node_uuid, content, deprecated, migrated_to, created_at, expires_at FROM memories WHERE node_uuid = ? AND deprecated = 0 ORDER BY id DESC LIMIT 1"
     )
     .bind(nodeUuid)
     .first<MemoryRow>();
@@ -63,6 +64,13 @@ interface EdgeRow {
 
 function nowSql(): string {
   return new Date().toISOString().replace("T", " ").slice(0, 19);
+}
+
+// Normalize any ISO/date input to the SQL format used by nowSql() so string
+// comparisons (expiry checks) stay consistent.
+function toSqlTime(v: string): string {
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? v : d.toISOString().replace("T", " ").slice(0, 19);
 }
 
 async function logAccess(db: D1Database, nodeUuid: string, context?: string): Promise<void> {
@@ -82,11 +90,12 @@ async function recordAudit(
   uri: string | null,
   nodeUuid: string | null,
   before: unknown,
-  after: unknown
+  after: unknown,
+  relation?: string
 ): Promise<void> {
   await db
-    .prepare("INSERT INTO audit_logs (op, node_uuid, uri, before_json, after_json, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(op, nodeUuid, uri, before === null ? null : JSON.stringify(before), JSON.stringify(after), nowSql())
+    .prepare("INSERT INTO audit_logs (op, node_uuid, uri, before_json, after_json, relation, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(op, nodeUuid, uri, before === null ? null : JSON.stringify(before), JSON.stringify(after), relation ?? null, nowSql())
     .run();
 }
 
@@ -103,6 +112,7 @@ export interface ReadResult {
   memory_id: number;
   created_at: string;
   updated_at: string;
+  expires_at?: string | null;
 }
 
 export async function readMemory(db: D1Database, uri: string, context?: string): Promise<ReadResult | null> {
@@ -119,15 +129,21 @@ export async function readMemory(db: D1Database, uri: string, context?: string):
 
   await logAccess(db, row.node_uuid, context);
 
+  // Foresight: surface expiry so callers know this memory has a shelf life
+  const expiresAt = (mem as { expires_at?: string | null }).expires_at ?? null;
+  const expired = expiresAt ? expiresAt < nowSql() : false;
+  const content = expired ? `[expired ${expiresAt}] ${mem.content}` : mem.content;
+
   return {
     uri: makeUri(domain, path),
-    content: mem.content,
+    content,
     priority: edge?.priority ?? 0,
     disclosure: edge?.disclosure ?? null,
     node_uuid: row.node_uuid,
     memory_id: mem.id,
     created_at: mem.created_at,
     updated_at: mem.created_at,
+    expires_at: expiresAt,
   };
 }
 
@@ -140,6 +156,7 @@ export interface CreateInput {
   content: string;
   priority: number;
   disclosure: string | null;
+  expiresAt?: string | null; // ISO time; memory auto-deprecates after this (Foresight)
 }
 
 export async function createMemory(db: D1Database, input: CreateInput): Promise<{ uri: string; content: string }> {
@@ -163,8 +180,8 @@ export async function createMemory(db: D1Database, input: CreateInput): Promise<
     .then((r) => Number(r.meta.last_row_id));
 
   const memoryId = await db
-    .prepare("INSERT INTO memories (node_uuid, content, deprecated, migrated_to, created_at) VALUES (?, ?, 0, NULL, ?)")
-    .bind(nodeUuid, input.content, nowSql())
+    .prepare("INSERT INTO memories (node_uuid, content, deprecated, migrated_to, created_at, expires_at) VALUES (?, ?, 0, NULL, ?, ?)")
+    .bind(nodeUuid, input.content, nowSql(), input.expiresAt ? toSqlTime(input.expiresAt) : null)
     .run()
     .then((r) => Number(r.meta.last_row_id));
 
@@ -215,6 +232,8 @@ export interface UpdateInput {
   append?: string | null;
   priority?: number | null;
   disclosure?: string | null;
+  expiresAt?: string | null; // Foresight: set or clear (null keeps current? use "" to clear)
+  relation?: string | null; // knowledge-evolution marker: replace|enrich|confirm|challenge
 }
 
 export async function updateMemory(db: D1Database, input: UpdateInput): Promise<ReadResult | null> {
@@ -243,9 +262,11 @@ export async function updateMemory(db: D1Database, input: UpdateInput): Promise<
     .prepare("UPDATE memories SET deprecated = 1, migrated_to = NULL WHERE id = ?")
     .bind(cur.id)
     .run();
+  // Foresight: expiresAt="" clears it, explicit value sets it, undefined keeps current
+  const newExpiry = input.expiresAt === "" ? null : (input.expiresAt ? toSqlTime(input.expiresAt) : (cur.expires_at ?? null));
   const newId = await db
-    .prepare("INSERT INTO memories (node_uuid, content, deprecated, migrated_to, created_at) VALUES (?, ?, 0, NULL, ?)")
-    .bind(row.node_uuid, content, now)
+    .prepare("INSERT INTO memories (node_uuid, content, deprecated, migrated_to, created_at, expires_at) VALUES (?, ?, 0, NULL, ?, ?)")
+    .bind(row.node_uuid, content, now, newExpiry)
     .run()
     .then((r) => Number(r.meta.last_row_id));
   await db
@@ -267,7 +288,7 @@ export async function updateMemory(db: D1Database, input: UpdateInput): Promise<
   const finalDisclosure = input.disclosure ?? edge?.disclosure ?? null;
 
   await upsertSearchDocument(db, domain, path, row.node_uuid, newId, content, finalDisclosure, finalPriority);
-  await recordAudit(db, "update", input.uri, row.node_uuid, { memory_id: cur.id, content: cur.content }, { memory_id: newId, content });
+  await recordAudit(db, "update", input.uri, row.node_uuid, { memory_id: cur.id, content: cur.content }, { memory_id: newId, content }, input.relation ?? undefined);
 
   return {
     uri: makeUri(domain, path),
@@ -422,10 +443,12 @@ export async function searchMemory(db: D1Database, query: string, limit: number 
     .all<SearchHit>()
     .then((r) => r.results ?? []);
 
-  // Trigger recall always wins: dedupe trigger hits first, then fill remaining
-  // slots with FTS results (mark trigger rows so callers can distinguish).
-  const triggerUris = new Set(triggerHits.map((h) => h.uri));
-  const ranked = triggerHits.map((h) => ({ ...h, snippet: "[trigger] " + h.snippet }));
+  // Reconstructive recollection (EverOS principle): if a trigger keyword
+  // matched, that IS the precise recall — return trigger hits as-is, no FTS
+  // noise. Only when triggers miss do we fall through to FTS/LIKE.
+  if (triggerHits.length > 0) {
+    return triggerHits.map((h) => ({ ...h, snippet: "[trigger] " + h.snippet }));
+  }
 
   let rows: SearchHit[] = [];
   if (q.length >= 3) {
@@ -458,12 +481,7 @@ export async function searchMemory(db: D1Database, query: string, limit: number 
       .then((r) => r.results ?? []);
   }
 
-  // trigger hits first (already [trigger]-marked), then non-duplicate FTS rows
-  const merged = [...ranked];
-  for (const r of rows) {
-    if (!triggerUris.has(r.uri) && merged.length < limit) merged.push(r);
-  }
-  return merged;
+  return rows;
 }
 
 // ===========================================================================
@@ -554,6 +572,57 @@ export async function systemRecent(db: D1Database, n: number): Promise<SystemInd
   return (rows.results ?? []).map((r) => ({ uri: makeUri(r.domain, r.path), title: r.title, updated_at: r.updated_at }));
 }
 
+/**
+ * Daily working-memory briefing (Mem-style). Dynamically assembled, no cron
+ * persistence needed: agent reads system://briefing at session start to get
+ * (1) recent activity, (2) top-priority memories, (3) items due to expire,
+ * (4) cold candidates that will be forgotten soon. Pure SQL, zero deps.
+ */
+export async function systemBriefing(db: D1Database): Promise<string> {
+  const recent = await systemRecent(db, 10);
+  const top = await db
+    .prepare(
+      `SELECT p.domain, p.path, e.name AS title, e.priority
+       FROM paths p JOIN edges e ON e.id = p.edge_id JOIN memories m ON m.node_uuid = p.node_uuid AND m.deprecated = 0
+       WHERE e.priority <= 1 AND p.path != ''
+       ORDER BY e.priority ASC, m.created_at DESC LIMIT 8`
+    )
+    .all<{ domain: string; path: string; title: string; priority: number }>();
+  const expiring = await db
+    .prepare(
+      `SELECT p.domain, p.path, e.name AS title, m.expires_at
+       FROM paths p JOIN edges e ON e.id = p.edge_id JOIN memories m ON m.node_uuid = p.node_uuid AND m.deprecated = 0
+       WHERE m.expires_at IS NOT NULL AND m.expires_at > ? AND m.expires_at < ?
+       ORDER BY m.expires_at ASC LIMIT 5`
+    )
+    .bind(nowSql(), new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 19).replace("T", " "))
+    .all<{ domain: string; path: string; title: string; expires_at: string }>();
+  const cold = await db
+    .prepare(
+      `SELECT p.domain, p.path, e.name AS title, e.priority, n.last_accessed_at
+       FROM nodes n JOIN paths p ON p.node_uuid = n.uuid JOIN edges e ON e.id = p.edge_id
+       WHERE (n.last_accessed_at IS NULL OR n.last_accessed_at < ?) AND e.priority > 3 AND p.path != ''
+       ORDER BY e.priority DESC LIMIT 5`
+    )
+    .bind(new Date(Date.now() - 60 * 86400_000).toISOString().slice(0, 19).replace("T", " "))
+    .all<{ domain: string; path: string; title: string; priority: number; last_accessed_at: string | null }>();
+
+  const lines: string[] = ["# Working Memory Briefing", `generated: ${new Date().toISOString()}`, ""];
+  lines.push("## Recent activity");
+  for (const r of recent) lines.push(`- ${r.uri}: ${r.title}`);
+  lines.push("", "## Top priority");
+  for (const t of top.results ?? []) lines.push(`- [p${t.priority}] ${makeUri(t.domain, t.path)}: ${t.title}`);
+  if ((expiring.results ?? []).length) {
+    lines.push("", "## Expiring this week");
+    for (const e of expiring.results ?? []) lines.push(`- ${makeUri(e.domain, e.path)} (${e.title}) until ${e.expires_at}`);
+  }
+  if ((cold.results ?? []).length) {
+    lines.push("", "## Cold (candidates for forgetting)");
+    for (const c of cold.results ?? []) lines.push(`- [p${c.priority}] ${makeUri(c.domain, c.path)}: ${c.title} (last seen ${c.last_accessed_at ?? "never"})`);
+  }
+  return lines.join("\n");
+}
+
 // ===========================================================================
 // admin: browse / audit / status
 // ===========================================================================
@@ -586,11 +655,12 @@ export interface AuditEntry {
   op: string;
   uri: string | null;
   created_at: string;
+  relation?: string | null;
 }
 
 export async function listAudit(db: D1Database, limit: number = 40): Promise<AuditEntry[]> {
   const rows = await db
-    .prepare("SELECT id, op, uri, created_at FROM audit_logs ORDER BY id DESC LIMIT ?")
+    .prepare("SELECT id, op, uri, relation, created_at FROM audit_logs ORDER BY id DESC LIMIT ?")
     .bind(Math.max(1, Math.min(limit, 200)))
     .all<AuditEntry>();
   return rows.results ?? [];
@@ -898,6 +968,25 @@ export interface ForgetResult {
  *     (true orphans: unreachable from the tree). Their audit trail remains.
  *  3. Rebuild search index afterwards (orphan rows may have been indexed).
  */
+export interface ForgetResult {
+  deprecated_removed: number;
+  orphans_removed: number;
+  expired_deprecated: number;
+  cold_removed: number;
+}
+
+/**
+ * Automatic "dream" cleanup, run by the scheduled handler:
+ *  1. Drop deprecated memory versions older than FORGET_DEPRECATED_DAYS (default 30).
+ *  2. Foresight: deprecate memories whose expires_at has passed (agent can still
+ *     read history via audit, but they leave the searchable tree).
+ *  3. Drop nodes that lost every path reference AND have no children/edges left
+ *     (true orphans: unreachable from the tree). Their audit trail remains.
+ *  4. Cold-forget: hard-delete low-level memories never accessed in 90 days
+ *     (last_accessed_at null or old) — they are the "forgotten context".
+ *     audit_logs keep before_json so rollback still works.
+ *  5. Rebuild search index afterwards (orphan/expired rows may have been indexed).
+ */
 export async function autoForget(db: D1Database): Promise<ForgetResult> {
   const deprecatedDays = 30;
   const cutoff = new Date(Date.now() - deprecatedDays * 86400_000).toISOString().slice(0, 19).replace("T", " ");
@@ -908,7 +997,14 @@ export async function autoForget(db: D1Database): Promise<ForgetResult> {
     .bind(cutoff)
     .run();
 
-  // 2. orphans: nodes with no path, no incoming/outgoing edges, not the root sentinel
+  // 2. Foresight: content expired — deprecate so it leaves search but stays in audit history
+  const now = nowSql();
+  const expired = await db
+    .prepare("UPDATE memories SET deprecated = 1 WHERE expires_at IS NOT NULL AND expires_at < ? AND deprecated = 0")
+    .bind(now)
+    .run();
+
+  // 3. orphans: nodes with no path, no incoming/outgoing edges, not the root sentinel
   const orphans = await db
     .prepare(
       `SELECT n.uuid
@@ -927,13 +1023,50 @@ export async function autoForget(db: D1Database): Promise<ForgetResult> {
     orphanCount++;
   }
 
-  // 3. search index may reference dropped orphan content
-  if (orphanCount > 0) {
+  // 4. cold-forget: nodes whose memory was never accessed (90d) and low priority (>3)
+  const coldCutoff = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 19).replace("T", " ");
+  const cold = await db
+    .prepare(
+      `SELECT n.uuid, p.domain, p.path, m.id AS memory_id, m.content, e.priority
+       FROM nodes n
+       JOIN paths p ON p.node_uuid = n.uuid
+       JOIN edges e ON e.id = p.edge_id
+       JOIN memories m ON m.node_uuid = n.uuid AND m.deprecated = 0
+       WHERE (n.last_accessed_at IS NULL OR n.last_accessed_at < ?)
+         AND e.priority > 3
+         AND p.path != ''
+         AND NOT EXISTS (SELECT 1 FROM triggers t WHERE t.node_uuid = n.uuid)
+       LIMIT 50`
+    )
+    .bind(coldCutoff)
+    .all<{ uuid: string; domain: string; path: string; memory_id: number; content: string; priority: number }>();
+
+  let coldCount = 0;
+  for (const c of cold.results ?? []) {
+    const uri = makeUri(c.domain, c.path);
+    const before = { node_uuid: c.uuid, memory_id: c.memory_id, content: c.content, path: c.path };
+    await db.prepare("DELETE FROM paths WHERE domain = ? AND path = ?").bind(c.domain, c.path).run();
+    const nodeRefs = await db
+      .prepare("SELECT (SELECT COUNT(*) FROM paths WHERE node_uuid = ?) + (SELECT COUNT(*) FROM edges WHERE parent_uuid = ? OR child_uuid = ?) AS n")
+      .bind(c.uuid, c.uuid, c.uuid)
+      .first<{ n: number }>();
+    if ((nodeRefs?.n ?? 0) === 0) {
+      await db.prepare("DELETE FROM memories WHERE node_uuid = ?").bind(c.uuid).run();
+      await db.prepare("DELETE FROM nodes WHERE uuid = ?").bind(c.uuid).run();
+    }
+    await recordAudit(db, "delete", uri, c.uuid, before, null, "cold-forget");
+    coldCount++;
+  }
+
+  // 5. search index may reference dropped/expired content
+  if (orphanCount > 0 || coldCount > 0) {
     await syncSearchFromPaths(db);
   }
 
   return {
     deprecated_removed: dep.meta.changes ?? 0,
     orphans_removed: orphanCount,
+    expired_deprecated: expired.meta.changes ?? 0,
+    cold_removed: coldCount,
   };
 }
