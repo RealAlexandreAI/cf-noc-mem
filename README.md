@@ -8,6 +8,8 @@
   <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/RealAlexandreAI/cf-noc-mem"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare Workers"></a>
 </p>
 
+<p align="center"><strong><a href="README.zh.md">中文文档</a></strong> · English</p>
+
 A stateless, single-user **long-term memory server** for AI agents, running entirely on Cloudflare's free tier. No VPS, no database server, no vector store — just a Worker + D1 + R2.
 
 > Based on the upstream [nocturne_memory](https://github.com/Dataojitori/nocturne_memory) memory-graph concept, rewritten serverless and stripped to what one person actually needs. Also available as agent plugins: [dsh-noc-memory](https://github.com/RealAlexandreAI/dsh-noc-memory) · [pi-noc-memory](https://github.com/RealAlexandreAI/pi-noc-memory).
@@ -133,6 +135,44 @@ Deploy once, then plug any agent into your instance:
 - **[pi-noc-memory](https://www.npmjs.com/package/pi-noc-memory)** — pi extension: `SessionStart` boot protocol + memory rules (`pi install npm:pi-noc-memory`)
 
 Both talk to your `/mcp` endpoint with a Bearer token.
+
+## Manual MCP config (no plugin)
+
+No plugin needed — any MCP client that supports **Streamable HTTP** can talk to your server directly. The endpoint is `https://<your-host>/mcp`, authenticated with the `Authorization: Bearer <API_TOKEN>` header (the same token you set in step 3).
+
+Generic `mcpServers` entry (Claude Code, Cursor, VS Code, etc.):
+
+```json
+{
+  "mcpServers": {
+    "noc-memory": {
+      "type": "http",
+      "url": "https://mem.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_TOKEN"
+      }
+    }
+  }
+}
+```
+
+Claude Desktop (`claude_desktop_config.json`) uses the same shape:
+
+```json
+{
+  "mcpServers": {
+    "noc-memory": {
+      "type": "http",
+      "url": "https://mem.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_TOKEN"
+      }
+    }
+  }
+}
+```
+
+Once connected, the agent sees the 9 tools (`read_memory`, `list_memories`, `create_memory`, …) directly. The plugins above only add convenience — a session-start boot protocol and memory-writing rules — none of which is required for the memory server to work.
 
 ## Tests
 
