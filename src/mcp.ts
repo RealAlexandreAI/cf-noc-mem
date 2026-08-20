@@ -3,8 +3,10 @@ import {
   addAlias,
   createMemory,
   deleteMemory,
+  getNode,
   manageTriggers,
   readMemory,
+  rollbackMemory,
   searchMemory,
   systemBoot,
   systemIndex,
@@ -25,7 +27,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "read_memory",
     description:
-      "Reads a memory by URI. Special system URIs: system://boot (core memories), system://index/<domain>, system://recent[/N].",
+      "Reads a memory by URI. Special system URIs: system://boot (boot memories), system://index/<domain>, system://recent[/N].",
     inputSchema: {
       type: "object",
       properties: { uri: { type: "string", description: "Memory URI, e.g. noc://agent/foo or system://recent/5" } },
@@ -95,6 +97,29 @@ const TOOLS: ToolDef[] = [
         limit: { type: "integer", minimum: 1, maximum: 50, description: "Max results, default 20" },
       },
       required: ["query"],
+    },
+  },
+  {
+    name: "list_memories",
+    description: "Lists child memories directly under a parent URI (browse the memory tree). Returns name, path and child count per entry.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        uri: { type: "string", description: "Parent URI to list under, e.g. noc://agent or noc:// for root" },
+        limit: { type: "integer", minimum: 1, maximum: 100, description: "Max entries, default 50" },
+      },
+      required: ["uri"],
+    },
+  },
+  {
+    name: "rollback_memory",
+    description: "Rolls back a memory change by audit id, restoring the previous state. Audit ids come from recent changes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        audit_id: { type: "integer", description: "Audit log id to roll back" },
+      },
+      required: ["audit_id"],
     },
   },
   {
@@ -207,7 +232,22 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
     case "search_memory": {
       const hits = await searchMemory(db, String(args.query ?? ""), Number(args.limit ?? 20));
       if (hits.length === 0) return "(no results)";
-      return hits.map((h) => `${h.uri} [p${h.priority}]\n${h.snippet}`).join("\n\n");
+      return `[${hits.length} hits]\n` + hits.map((h) => `${h.uri} [p${h.priority}]\n${h.snippet}`).join("\n\n");
+    }
+    case "list_memories": {
+      const uri = String(args.uri ?? "");
+      const { domain, path } = parseUriLocal(uri);
+      const node = await getNode(db, domain, path, true);
+      const limit = Math.max(1, Math.min(Number(args.limit ?? 50), 100));
+      const children = (node.children ?? []).slice(0, limit);
+      if (children.length === 0) return "(no children)";
+      return children
+        .map((c) => `${c.uri || `${domain}://${c.path}`}${c.approx_children_count ? ` (${c.approx_children_count} sub)` : ""}`)
+        .join("\n");
+    }
+    case "rollback_memory": {
+      const r = await rollbackMemory(db, Number(args.audit_id ?? 0));
+      return r.ok ? r.message : `Rollback failed: ${r.message}`;
     }
     case "manage_triggers": {
       const r = await manageTriggers(db, String(args.action ?? ""), String(args.keyword ?? ""), args.target_uri == null ? undefined : String(args.target_uri));
@@ -236,6 +276,12 @@ async function handleSystemUri(db: D1Database, uri: string): Promise<string> {
 // ===========================================================================
 // JSON-RPC helpers
 // ===========================================================================
+
+function parseUriLocal(uri: string): { domain: string; path: string } {
+  const m = /^([a-z][a-z0-9-]*):\/\/(.*)$/i.exec(uri.trim());
+  if (m) return { domain: m[1].toLowerCase(), path: m[2].replace(/^\/+|\/+$/g, "") };
+  return { domain: "noc", path: uri.trim().replace(/^\/+|\/+$/g, "") };
+}
 
 function jsonResult(id: unknown, result: unknown): Response {
   return new Response(JSON.stringify({ jsonrpc: "2.0", id: id ?? null, result }), {

@@ -404,6 +404,29 @@ export async function searchMemory(db: D1Database, query: string, limit: number 
   const q = query.trim();
   if (!q) return [];
 
+  // Trigger-keyword recall: exact or substring match on the triggers table
+  // (keywords are the memory's "call sign" — they rank above content FTS).
+  const triggerHits = await db
+    .prepare(
+      `SELECT p.domain || '://' || p.path AS uri, t.node_uuid AS node_uuid, m.id AS memory_id,
+              e.priority, substr(m.content, 1, 200) AS snippet
+       FROM triggers t
+       JOIN paths p ON p.node_uuid = t.node_uuid
+       JOIN edges e ON e.id = p.edge_id
+       JOIN memories m ON m.node_uuid = t.node_uuid AND m.deprecated = 0
+       WHERE t.keyword = ? OR ? LIKE '%' || t.keyword || '%'
+       ORDER BY e.priority ASC
+       LIMIT ?`
+    )
+    .bind(q, q, limit)
+    .all<SearchHit>()
+    .then((r) => r.results ?? []);
+
+  // Trigger recall always wins: dedupe trigger hits first, then fill remaining
+  // slots with FTS results (mark trigger rows so callers can distinguish).
+  const triggerUris = new Set(triggerHits.map((h) => h.uri));
+  const ranked = triggerHits.map((h) => ({ ...h, snippet: "[trigger] " + h.snippet }));
+
   let rows: SearchHit[] = [];
   if (q.length >= 3) {
     // trigram: quote the phrase; FTS table stores uri/content directly (no rowid join)
@@ -435,7 +458,12 @@ export async function searchMemory(db: D1Database, query: string, limit: number 
       .then((r) => r.results ?? []);
   }
 
-  return rows;
+  // trigger hits first (already [trigger]-marked), then non-duplicate FTS rows
+  const merged = [...ranked];
+  for (const r of rows) {
+    if (!triggerUris.has(r.uri) && merged.length < limit) merged.push(r);
+  }
+  return merged;
 }
 
 // ===========================================================================

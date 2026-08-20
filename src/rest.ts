@@ -86,13 +86,13 @@ export async function handleRest(req: Request, url: URL, env: Env): Promise<Resp
       if (method === "GET") {
         const entries = await listAll(env.DB);
         const rootCount = entries.filter((e) => !e.uri.includes("/")).length;
-        return json([{ domain: "core", root_count: rootCount }]);
+        return json([{ domain: "noc", root_count: rootCount }]);
       }
       return bad("not supported");
     }
     if (sub === "namespaces") return json([""]);
     if (sub === "node") {
-      const domain = q("domain") || "core";
+      const domain = q("domain") || (body as {domain?: string}).domain || "noc";
       const path = q("path") || "";
       if (method === "GET") {
         try {
@@ -130,8 +130,8 @@ export async function handleRest(req: Request, url: URL, env: Env): Promise<Resp
       // /api/browse/node/alias | rename
       if (parts[2] === "alias" && method === "POST") {
         const b = body as { domain?: string; path?: string; alias_domain?: string; alias_path?: string; new_uri?: string; target_uri?: string; priority?: number; disclosure?: string | null };
-        const newUri = b.new_uri || `${b.alias_domain || "core"}://${b.alias_path || ""}`;
-        const targetUri = b.target_uri || `${b.domain || "core"}://${b.path || ""}`;
+        const newUri = b.new_uri || `${b.alias_domain || "noc"}://${b.alias_path || ""}`;
+        const targetUri = b.target_uri || `${b.domain || "noc"}://${b.path || ""}`;
         const r = await dbAlias(env.DB, newUri, targetUri, b.priority ?? 0, b.disclosure ?? null);
         return r ? json({ success: true }) : bad("alias failed", 409);
       }
