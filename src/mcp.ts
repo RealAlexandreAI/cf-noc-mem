@@ -53,11 +53,12 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "update_memory",
-    description: "Updates a memory to a new version. Must read_memory(uri) first. Supports append or old_string->new_string block replace. relation marks knowledge evolution: replace|enrich|confirm|challenge.",
+    description: "Updates a memory to a new version. Must read_memory(uri) first. Supports full content replace, append, or old_string->new_string block replace. relation marks knowledge evolution: replace|enrich|confirm|challenge.",
     inputSchema: {
       type: "object",
       properties: {
         uri: { type: "string" },
+        content: { type: "string", description: "Full replacement content (replaces the whole memory)" },
         old_string: { type: "string", description: "Exact text to replace" },
         new_string: { type: "string", description: "Replacement text" },
         append: { type: "string", description: "Text to append to the end" },
@@ -231,6 +232,7 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
     case "update_memory": {
       const r = await updateMemory(db, {
         uri: String(args.uri ?? ""),
+        content: args.content == null ? undefined : String(args.content),
         oldString: args.old_string == null ? null : String(args.old_string),
         newString: args.new_string == null ? null : String(args.new_string),
         append: args.append == null ? null : String(args.append),
