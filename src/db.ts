@@ -207,6 +207,7 @@ async function uniquePath(db: D1Database, domain: string, base: string): Promise
 
 export interface UpdateInput {
   uri: string;
+  content?: string | null; // full replace (upstream PUT /browse/node)
   oldString?: string | null;
   newString?: string | null;
   append?: string | null;
@@ -223,7 +224,9 @@ export async function updateMemory(db: D1Database, input: UpdateInput): Promise<
   if (!cur) return null;
 
   let content = cur.content;
-  if (input.append != null) {
+  if (input.content != null) {
+    content = input.content;
+  } else if (input.append != null) {
     content = content + "\n" + input.append;
   } else if (input.oldString != null) {
     if (input.newString == null) {
@@ -676,6 +679,121 @@ export async function dbStatus(db: D1Database, snapshots: R2Bucket): Promise<Rec
     ...(counts ?? {}),
     snapshots: snaps.objects.length,
     last_snapshot: snaps.objects[0]?.key ?? null,
+  };
+}
+
+// ===========================================================================
+// browse: node detail + children + breadcrumbs (upstream REST contract)
+// ===========================================================================
+
+export interface BrowseNode {
+  node: {
+    path: string;
+    domain: string;
+    uri: string;
+    name: string;
+    content: string;
+    priority: number;
+    disclosure: string | null;
+    created_at: string | null;
+    is_virtual: boolean;
+    aliases: string[];
+    node_uuid: string;
+    glossary_keywords: string[];
+    glossary_matches: unknown[];
+  };
+  children: {
+    domain: string;
+    path: string;
+    uri: string;
+    name: string;
+    priority: number;
+    disclosure: string | null;
+    content_snippet: string;
+    approx_children_count: number;
+  }[];
+  breadcrumbs: { path: string; label: string }[];
+}
+
+export async function getNode(db: D1Database, domain: string, path: string, navOnly: boolean = false): Promise<BrowseNode> {
+  const p = path.replace(/^\/+|\/+$/g, "");
+  const segs = p ? p.split("/") : [];
+
+  let nodeUuid: string;
+  let memory: { content: string; priority: number; disclosure: string | null; created_at: string | null } | null = null;
+
+  if (!p) {
+    nodeUuid = ROOT_NODE;
+    const rootPath = await resolvePathRow(db, domain, "");
+    if (rootPath?.node_uuid) {
+      const m = await activeMemoryForNode(db, rootPath.node_uuid);
+      if (m) { memory = { content: m.content, priority: 0, disclosure: null, created_at: m.created_at }; nodeUuid = rootPath.node_uuid; }
+    }
+  } else {
+    const row = await resolvePathRow(db, domain, p);
+    if (!row?.node_uuid) throw new Error(`path not found: ${domain}://${p}`);
+    nodeUuid = row.node_uuid;
+    const m = await activeMemoryForNode(db, nodeUuid);
+    if (m) memory = { content: m.content, priority: 0, disclosure: null, created_at: m.created_at };
+  }
+
+  // children via edges
+  const childRows = await db
+    .prepare(
+      `SELECT e.child_uuid, e.name, e.priority, e.disclosure, p.domain, p.path, m.content
+       FROM edges e
+       LEFT JOIN paths p ON p.node_uuid = e.child_uuid AND p.domain = ? AND p.path != ''
+       LEFT JOIN memories m ON m.node_uuid = e.child_uuid AND m.deprecated = 0
+       WHERE e.parent_uuid = ?`
+    )
+    .bind(domain, nodeUuid)
+    .all<{ child_uuid: string; name: string; priority: number; disclosure: string | null; domain: string; path: string; content: string }>();
+
+  const seen = new Set<string>();
+  const children = (childRows.results ?? [])
+    .filter((c) => c.path && !seen.has(c.child_uuid) && seen.add(c.child_uuid))
+    .map((c) => ({
+      domain: c.domain || domain,
+      path: c.path,
+      uri: `${c.domain || domain}://${c.path}`,
+      name: c.path.split("/").pop() || c.path,
+      priority: c.priority ?? 0,
+      disclosure: c.disclosure,
+      content_snippet: (c.content || "").slice(0, 120),
+      approx_children_count: 0,
+    }))
+    .sort((a, b) => (a.priority - b.priority) || a.path.localeCompare(b.path));
+
+  // aliases: other paths to this node
+  const aliasRows = await db
+    .prepare("SELECT domain, path FROM paths WHERE node_uuid = ? AND NOT (domain = ? AND path = ?)")
+    .bind(nodeUuid, domain, p)
+    .all<{ domain: string; path: string }>();
+  const aliases = (aliasRows.results ?? []).map((r) => `${r.domain}://${r.path}`);
+
+  // breadcrumbs
+  const breadcrumbs = [{ path: "", label: "root" }];
+  let acc = "";
+  for (const s of segs) { acc = acc ? `${acc}/${s}` : s; breadcrumbs.push({ path: acc, label: s }); }
+
+  return {
+    node: {
+      path: p,
+      domain,
+      uri: `${domain}://${p}`,
+      name: p.split("/").pop() || "root",
+      content: memory?.content ?? "",
+      priority: memory?.priority ?? 0,
+      disclosure: memory?.disclosure ?? null,
+      created_at: memory?.created_at ?? null,
+      is_virtual: !memory,
+      aliases,
+      node_uuid: nodeUuid,
+      glossary_keywords: [],
+      glossary_matches: [],
+    },
+    children,
+    breadcrumbs,
   };
 }
 

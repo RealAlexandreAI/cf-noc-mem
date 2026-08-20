@@ -2,6 +2,7 @@ import { checkAuth } from "./auth";
 import { Env } from "./config";
 import { dbStatus, getAudit, listAll, listAudit, rollbackMemory, searchMemory, syncSearchFromPaths, systemBoot, systemRecent } from "./db";
 import { handleMcpRequest } from "./mcp";
+import { handleRest } from "./rest";
 
 async function takeSnapshot(env: Env): Promise<string> {
   const dump = await env.DB.prepare(
@@ -44,6 +45,10 @@ export default {
     // Admin data endpoints: dual-mode (Access header OR Bearer), see auth.ts.
     const denied = checkAuth(req, env);
     if (denied) return denied;
+
+    // Upstream REST contract (/api/*) for the React SPA.
+    const restRes = await handleRest(req, url, env);
+    if (restRes) return restRes;
 
     if (url.pathname === "/admin/boot" && req.method === "GET") {
       const text = await systemBoot(env.DB);

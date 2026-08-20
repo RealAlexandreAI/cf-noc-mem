@@ -12,10 +12,8 @@ function unauthorized(): Response {
 /**
  * Two-mode auth:
  *  - /mcp           : Bearer token only (agent clients)
- *  - /admin/*       : CF Access verified (Cf-Access-Authenticated-User-Email present)
+ *  - /admin/* /api/*: CF Access verified (Cf-Access-Authenticated-User-Email present)
  *                     OR Bearer token — dual mode, zero config.
- *                    Personal users protect /admin/* with Cloudflare Access in Zero Trust;
- *                    open-source users without Access fall back to the Bearer token.
  */
 export function checkAuth(req: Request, env: Env): Response | null {
   const url = new URL(req.url);
@@ -26,11 +24,9 @@ export function checkAuth(req: Request, env: Env): Response | null {
     return bearerOk ? null : unauthorized();
   }
 
-  if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
-    // UI shell (GET /admin/) is public HTML (no data); data & actions need auth.
-    const isUi = req.method === "GET" && (url.pathname === "/admin" || url.pathname === "/admin/");
-    if (isUi) return null;
-    if (req.headers.get(ACCESS_EMAIL_HEADER)) return null; // CF Access already validated
+  if (url.pathname.startsWith("/admin") || url.pathname.startsWith("/api/")) {
+    // CF Access validated (any Access JWT assertion proves the edge let it through)
+    if (req.headers.get("Cf-Access-Jwt-Assertion") || req.headers.get(ACCESS_EMAIL_HEADER)) return null;
     return bearerOk ? null : unauthorized();
   }
 
