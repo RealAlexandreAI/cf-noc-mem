@@ -41,7 +41,37 @@ export default {
   },
 
   async fetch(req: Request, env: Env): Promise<Response> {
+    const start = Date.now();
     const url = new URL(req.url);
+    const loggable = url.pathname !== "/health" && !url.pathname.startsWith("/assets/");
+
+    if (loggable) {
+      console.log(JSON.stringify({ event: "req", method: req.method, path: url.pathname, query: url.search.slice(0, 200) }));
+    }
+
+    try {
+      const res = await this.handle(req, env, url);
+      if (loggable) {
+        console.log(JSON.stringify({ event: "res", method: req.method, path: url.pathname, status: res.status, ms: Date.now() - start }));
+      }
+      return res;
+    } catch (err) {
+      console.error(JSON.stringify({
+        event: "err",
+        method: req.method,
+        path: url.pathname,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        ms: Date.now() - start,
+      }));
+      return new Response(JSON.stringify({ error: "internal error" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      });
+    }
+  },
+
+  async handle(req: Request, env: Env, url: URL): Promise<Response> {
 
     // The whole panel lives under /admin (Cloudflare Access guards /admin).
     // /mcp and /health stay public (worker-gated); /assets/* are static build

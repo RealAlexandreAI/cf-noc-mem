@@ -151,6 +151,24 @@ export async function handleMcpRequest(body: unknown, env: Env): Promise<Respons
     return jsonRpcError(msg?.id ?? null, -32600, "Invalid Request");
   }
 
+  // Observability: log the JSON-RPC method + a redacted summary of tool args
+  // (only for tools/call — lists/initialize are noise). Never log bearer tokens:
+  // args are filtered to safe keys before stringifying.
+  if (msg.method === "tools/call") {
+    const tool = String(msg.params?.name ?? "");
+    const args = (msg.params?.arguments ?? {}) as Record<string, unknown>;
+    const safe: Record<string, unknown> = {};
+    for (const k of Object.keys(args)) {
+      if (k === "content" || k === "disclosure" || k === "old_string" || k === "new_string" || k === "append") {
+        const s = String(args[k] ?? "");
+        safe[k] = s.length > 120 ? s.slice(0, 120) + "…" : s;
+      } else {
+        safe[k] = args[k];
+      }
+    }
+    console.log(JSON.stringify({ event: "mcp_call", tool, args: safe }));
+  }
+
   switch (msg.method) {
     case "initialize":
       return jsonResult(msg.id, {
