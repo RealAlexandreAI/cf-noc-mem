@@ -688,14 +688,22 @@ export async function systemDiagnostic(db: D1Database, domain: string): Promise<
   const dom = domain || DEFAULT_DOMAIN;
   const active = await db
     .prepare(
-      `SELECT p.path, e.name AS title, e.priority, n.last_accessed_at, m.expires_at, m.created_at
+      `SELECT p.path, p.node_uuid, e.name AS title, e.priority, n.last_accessed_at, m.expires_at, m.created_at
        FROM paths p JOIN edges e ON e.id = p.edge_id JOIN memories m ON m.node_uuid = p.node_uuid AND m.deprecated = 0
        JOIN nodes n ON n.uuid = p.node_uuid
        WHERE p.domain = ? AND p.path != ''
        ORDER BY e.priority ASC`
     )
     .bind(dom)
-    .all<{ path: string; title: string; priority: number; last_accessed_at: string | null; expires_at: string | null; created_at: string }>();
+    .all<{ path: string; node_uuid: string; title: string; priority: number; last_accessed_at: string | null; expires_at: string | null; created_at: string }>();
+
+  // Nodes reachable via a root-level path are loaded by system://boot every
+  // session — "never re-accessed" is expected for them, not a red flag.
+  const bootLoaded = new Set(
+    (active.results ?? [])
+      .filter((r) => !r.path.includes("/"))
+      .map((r) => r.node_uuid)
+  );
 
   const now = nowSql();
   const staleCutoff = new Date(Date.now() - 60 * 86400_000).toISOString().slice(0, 19).replace("T", " ");
@@ -707,7 +715,7 @@ export async function systemDiagnostic(db: D1Database, domain: string): Promise<
     if ((r.last_accessed_at === null || r.last_accessed_at < staleCutoff) && r.priority > 3) {
       stale.push(`- [p${r.priority}] ${makeUri(dom, r.path)}: ${r.title} (last seen ${r.last_accessed_at ?? "never"})`);
     }
-    if ((r.last_accessed_at === null || r.last_accessed_at < staleCutoff) && r.priority <= 1) {
+    if ((r.last_accessed_at === null || r.last_accessed_at < staleCutoff) && r.priority <= 1 && !bootLoaded.has(r.node_uuid)) {
       unreadTop.add(`- [p${r.priority}] ${makeUri(dom, r.path)}: ${r.title}`);
     }
   }
