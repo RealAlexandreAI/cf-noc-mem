@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="100%" role="img" aria-label="Noc Memory — serverless long-term memory for AI agents on Cloudflare Workers">
+  <title>Noc Memory — long-term memory for AI agents, on Cloudflare's free tier</title>
+  <desc>A memory tree noc://agent with versioned content, trigger keywords, and daily briefing, served by a stateless MCP endpoint on Cloudflare Workers.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0e1a"/>
+      <stop offset="1" stop-color="#121630"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="cardline" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6366f1" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#6366f1" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="340" rx="20" fill="url(#bg)"/>
+
+  <!-- title -->
+  <text x="64" y="92" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="52" font-weight="700" fill="#f5f7fa">Noc Memory</text>
+  <text x="64" y="136" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="24" fill="#9aa7b8">Long-term memory for AI agents — on Cloudflare's free tier</text>
+  <rect x="64" y="156" width="220" height="6" rx="3" fill="url(#accent)"/>
+
+  <!-- memory tree: noc:// root -->
+  <text x="64" y="216" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="19" fill="#c3b6ff">noc://</text>
+  <text x="112" y="216" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="19" fill="#f5f7fa">agent</text>
+  <line x1="100" y1="226" x2="100" y2="264" stroke="#2a2f52" stroke-width="2"/>
+  <line x1="100" y1="264" x2="136" y2="264" stroke="#2a2f52" stroke-width="2"/>
+  <text x="144" y="262" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" fill="#9aa7b8">deploy_pipeline</text>
+  <circle cx="136" cy="260" r="3" fill="#6366f1"/>
+  <line x1="100" y1="270" x2="100" y2="296" stroke="#2a2f52" stroke-width="2"/>
+  <line x1="100" y1="296" x2="136" y2="296" stroke="#2a2f52" stroke-width="2"/>
+  <text x="144" y="294" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" fill="#9aa7b8">server_tuning</text>
+  <circle cx="136" cy="292" r="3" fill="#8b5cf6"/>
+
+  <!-- stateless MCP card -->
+  <rect x="380" y="196" width="360" height="104" rx="12" fill="#141830" stroke="#262c50" stroke-width="2"/>
+  <text x="404" y="228" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" fill="#c3b6ff">POST /mcp</text>
+  <text x="404" y="254" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="16" fill="#9aa7b8">stateless · no SSE · no sessions</text>
+  <text x="404" y="278" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="16" fill="#6366f1">9 tools · Bearer-gated</text>
+
+  <!-- daily briefing card -->
+  <rect x="772" y="196" width="364" height="104" rx="12" fill="#141830" stroke="#262c50" stroke-width="2"/>
+  <rect x="772" y="196" width="364" height="4" rx="2" fill="url(#cardline)"/>
+  <text x="796" y="228" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" fill="#c3b6ff">system://briefing</text>
+  <text x="796" y="254" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="16" fill="#9aa7b8">recent · expiring · cold</text>
+  <text x="796" y="278" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="16" fill="#8b5cf6">auto-forget "dream" cron</text>
+
+  <!-- footer strip -->
+  <rect x="64" y="316" width="1072" height="1" fill="#262c50"/>
+  <text x="64" y="330" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#6b7694">Worker + D1 + R2 — zero VPS, zero vector store</text>
+</svg>

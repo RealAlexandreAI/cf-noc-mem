@@ -1,6 +1,12 @@
 # Noc Memory (cf-noc-mem)
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/RealAlexandreAI/cf-noc-mem)
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="Noc Memory — serverless long-term memory for AI agents on Cloudflare Workers">
+</p>
+
+<p align="center">
+  <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/RealAlexandreAI/cf-noc-mem"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare Workers"></a>
+</p>
 
 A stateless, single-user **long-term memory server** for AI agents, running entirely on Cloudflare's free tier. No VPS, no database server, no vector store — just a Worker + D1 + R2.
 
