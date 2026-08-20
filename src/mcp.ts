@@ -13,6 +13,7 @@ import {
   systemBoot,
   systemBriefing,
   systemDiagnostic,
+  systemFocus,
   systemIndex,
   systemRecent,
   updateMemory,
@@ -328,6 +329,7 @@ async function handleSystemUri(db: D1Database, uri: string): Promise<string> {
   const rest = uri.replace(/^system:\/\//, "");
   if (rest === "boot") return systemBoot(db);
   if (rest === "briefing") return systemBriefing(db);
+  if (rest === "focus") return systemFocus(db);
   if (rest.startsWith("diagnostic/")) {
     return systemDiagnostic(db, rest.slice("diagnostic/".length));
   }
@@ -340,7 +342,7 @@ async function handleSystemUri(db: D1Database, uri: string): Promise<string> {
     const items = await systemRecent(db, Number.isFinite(n) ? n : 10);
     return items.map((i) => `${i.uri}: ${i.title}`).join("\n") || "(empty)";
   }
-  return "Unknown system URI. Use system://boot, system://index/<domain>, system://recent[/N], system://briefing, system://diagnostic/<domain>.";
+  return "Unknown system URI. Use system://boot, system://briefing, system://focus, system://index/<domain>, system://recent[/N], system://diagnostic/<domain>.";
 }
 
 // ===========================================================================

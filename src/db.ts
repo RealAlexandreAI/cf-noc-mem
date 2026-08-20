@@ -703,6 +703,52 @@ export async function systemIndex(db: D1Database, domain: string): Promise<Syste
   return (rows.results ?? []).map((r) => ({ uri: makeUri(r.domain, r.path), title: r.title, updated_at: r.updated_at }));
 }
 
+/**
+ * system://focus — "what am I working on right now", zero new concepts.
+ *
+ * Not a new schema or naming convention: it merely aggregates the memories that
+ * were updated recently into their working trees (path root = first two path
+ * segments), so a session can resume long-running work without browsing.
+ * Pure SQL + a little grouping; same family as system://briefing.
+ * Root-level memories (single path segment) are deliberately excluded — those
+ * are core identity/context, already covered by system://boot.
+ */
+export async function systemFocus(db: D1Database): Promise<string> {
+  const since = toSqlTime(new Date(Date.now() - 48 * 3600_000).toISOString());
+  const rows = await db
+    .prepare(
+      `SELECT p.domain, p.path, e.name AS title, e.priority, m.created_at AS updated_at
+       FROM paths p JOIN edges e ON e.id = p.edge_id JOIN memories m ON m.node_uuid = p.node_uuid AND m.deprecated = 0
+       WHERE instr(p.path, '/') > 0 AND m.created_at > ?
+       ORDER BY m.created_at DESC LIMIT 50`
+    )
+    .bind(since)
+    .all<{ domain: string; path: string; title: string; priority: number; updated_at: string }>();
+
+  // group by working tree: first two path segments (noc://a/b), or the single
+  // segment itself for root-level memories
+  const trees = new Map<string, { uri: string; nodes: { uri: string; title: string; updated_at: string; priority: number }[] }>();
+  for (const r of rows.results ?? []) {
+    const segs = r.path.split("/").filter(Boolean);
+    const key = segs.length >= 2 ? segs.slice(0, 2).join("/") : (segs[0] ?? "");
+    if (!key) continue;
+    const uri = makeUri(r.domain, key);
+    if (!trees.has(uri)) trees.set(uri, { uri, nodes: [] });
+    trees.get(uri)!.nodes.push({ uri: makeUri(r.domain, r.path), title: r.title, updated_at: r.updated_at, priority: r.priority });
+  }
+  if (trees.size === 0) return "(no active work in the last 48h)";
+
+  const sorted = [...trees.values()].sort((a, b) => (b.nodes[0]?.updated_at ?? "").localeCompare(a.nodes[0]?.updated_at ?? ""));
+  const lines: string[] = ["# Focus — working trees", `generated: ${new Date().toISOString()}`, ""];
+  for (const t of sorted) {
+    const last = t.nodes[0]?.updated_at ?? "";
+    const best = Math.min(...t.nodes.map((n) => n.priority));
+    lines.push(`## ${t.uri} (${t.nodes.length} nodes, best p${best}, last ${last})`);
+    for (const n of t.nodes.slice(0, 4)) lines.push(`- ${n.uri}: ${n.title} @ ${n.updated_at}`);
+  }
+  return lines.join("\n");
+}
+
 export async function systemRecent(db: D1Database, n: number): Promise<SystemIndex[]> {
   const rows = await db
     .prepare(

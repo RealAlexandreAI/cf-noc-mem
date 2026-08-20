@@ -24,6 +24,7 @@ Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treat
 - **Trigger recall**: keywords bound to memories rank above full-text search
 - **Foresight**: memories can carry an expiry — they auto-leave search when stale
 - **Daily briefing**: `system://briefing` — what changed, what's expiring, what's cold
+- **Focus**: `system://focus` — recently-updated memories grouped into working trees, so long-running work resumes without browsing
 - **Audit + rollback**: every change is tracked; mistakes are undoable
 - **Auto-forget** ("dream"): cron drops old versions, expired content, and cold low-priority memories — no manual cleanup
 
@@ -31,7 +32,7 @@ Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treat
 
 | tool | purpose |
 |------|---------|
-| `read_memory(uri)` | read by URI; also `system://boot`, `system://briefing`, `system://index/<domain>`, `system://recent[/N]` |
+| `read_memory(uri)` | read by URI; also `system://boot`, `system://briefing`, `system://focus`, `system://index/<domain>`, `system://recent[/N]` |
 | `list_memories(uri, limit?)` | browse child memories under a URI |
 | `create_memory(parent_uri, content, priority, disclosure, expires_at?)` | create under an existing parent |
 | `update_memory(uri, append?/old_string+new_string?, priority?, disclosure?, expires_at?, relation?)` | new versioned row; `relation` marks evolution: `replace|enrich|confirm|challenge` |
@@ -193,6 +194,7 @@ The plugins do two things beyond the tools: a **session-start boot** and **memor
 ### Session start
 - Call `read_memory` on `system://boot` first — it anchors the session with core memories.
 - Then `system://briefing` for today's context (recent activity, expiring memories, cold candidates).
+- Then `system://focus` to see which working trees were touched recently — resume the active one. (`system://recent` is a subset of the briefing; no need to read it separately.)
 
 ### Read
 - Prefer `search_memory` over browsing — it surfaces trigger-keyword-bound memories above FTS noise.

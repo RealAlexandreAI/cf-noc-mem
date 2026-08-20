@@ -369,12 +369,29 @@ def s15_trigger_relevance():
     check("S15e multi-keyword node returns once", txt and uri_a in txt, (txt or "")[:70])
 
 
+def s16_focus_aggregation():
+    print("S16 focus aggregates recent work trees (zero new concepts)")
+    # build a two-level working tree, then focus must surface it grouped by root
+    parent, _ = create("noc://agent", f"zt-loop-{uid} focus area")
+    if not parent:
+        check("S16a create parent under agent", False); return
+    child, _ = create(parent, f"zt-loop-{uid} focus sub note")
+    if not child:
+        check("S16b create child", False); return
+    time.sleep(1)  # ensure created_at ordering is stable
+    txt, _ = call("read_memory", {"uri": "system://focus"})
+    check("S16c focus lists working tree", txt and "Focus" in txt and "zt-loop-" + uid in txt, (txt or "")[:120])
+    # the tree root (first two path segments) must appear, not just the leaf
+    root = "/".join(parent.split("/")[:2]) if "/" in parent else parent
+    check("S16d focus groups by tree root", txt and root in txt, (txt or "")[:120])
+
+
 def main():
     print(f"noc scenario loop (uid={uid})\n")
     for fn in [s1_project_handoff, s2_meeting_note, s3_self_correction, s4_trigger_mgmt,
                s5_hierarchy, s6_full_replace_vs_append, s7_rename_contract, s8_search_modes,
                s9_system_nodes, s10_boundaries, s11_slug, s12_expiry_clear,
-               s13_audit_query, s14_rename_cascade, s15_trigger_relevance]:
+               s13_audit_query, s14_rename_cascade, s15_trigger_relevance, s16_focus_aggregation]:
         try:
             fn()
         except Exception as e:

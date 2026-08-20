@@ -22,6 +22,7 @@
 - **触发词召回**：绑定到记忆的关键词排在全文搜索之前
 - **前瞻（Foresight）**：记忆可以带过期时间——过期后自动退出搜索
 - **每日简报**：`system://briefing`——最近变更、即将过期、冷记忆一览
+- **焦点视图**：`system://focus`——最近更新的记忆按工作树聚合，长周期工作无需翻找即可续作
 - **审计 + 回滚**：每次变更都有记录；错了可以撤销
 - **自动遗忘**（"dream"）：cron 定时清除旧版本、过期内容和长期未访问的低等级记忆——无需人工清理
 
@@ -29,7 +30,7 @@
 
 | 工具 | 作用 |
 |------|------|
-| `read_memory(uri)` | 按 URI 读取；也支持 `system://boot`、`system://briefing`、`system://index/<domain>`、`system://recent[/N]` |
+| `read_memory(uri)` | 按 URI 读取；也支持 `system://boot`、`system://briefing`、`system://focus`、`system://index/<domain>`、`system://recent[/N]` |
 | `list_memories(uri, limit?)` | 浏览某 URI 下的子记忆 |
 | `create_memory(parent_uri, content, priority, disclosure, expires_at?)` | 在已有父节点下创建 |
 | `update_memory(uri, append?/old_string+new_string?, priority?, disclosure?, expires_at?, relation?)` | 新增版本行；`relation` 标记演变关系：`replace|enrich|confirm|challenge` |
@@ -191,6 +192,7 @@ Claude Desktop（`claude_desktop_config.json`）用同样的结构：
 ### 会话开始
 - 先 `read_memory` 读 `system://boot`——它用核心记忆锚定本次会话。
 - 再读 `system://briefing` 获取今日上下文（近期活动、即将过期、冷候选）。
+- 再读 `system://focus` 看哪些工作树最近在动——直接续上活跃的那个。（`system://recent` 是简报的子集，不必单独读。）
 
 ### 读取
 - 优先 `search_memory` 而不是浏览——它能把绑定触发词的记忆顶到 FTS 噪音之上。
