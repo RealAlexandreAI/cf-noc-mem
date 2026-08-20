@@ -20,13 +20,14 @@
 - **无状态 MCP**（Streamable HTTP）：没有 SSE、没有会话——agent 只需 `POST /mcp`
 - **树形记忆**：`noc://` URI，通过 `list_memories` 浏览
 - **触发词召回**：绑定到记忆的关键词排在全文搜索之前
+- **语义搜索** *（可选）*：多语言 embedding（bge-m3）+ Vectorize，把语义召回与关键词搜索合并——见 [§9](#9可选语义搜索-vectorize)
 - **前瞻（Foresight）**：记忆可以带过期时间——过期后自动退出搜索
 - **每日简报**：`system://briefing`——最近变更、即将过期、冷记忆一览
 - **焦点视图**：`system://focus`——最近更新的记忆按工作树聚合，长周期工作无需翻找即可续作
 - **审计 + 回滚**：每次变更都有记录；错了可以撤销
 - **自动遗忘**（"dream"）：cron 定时清除旧版本、过期内容和长期未访问的低等级记忆——无需人工清理
 
-## MCP 工具（11 个）
+## MCP 工具（12 个）
 
 | 工具 | 作用 |
 |------|------|
@@ -36,11 +37,12 @@
 | `update_memory(uri, append?/old_string+new_string?, priority?, disclosure?, expires_at?, relation?)` | 新增版本行；`relation` 标记演变关系：`replace|enrich|confirm|challenge` |
 | `delete_memory(uri)` | 切断一个 URI 路径；返回被孤立的子节点（如有） |
 | `add_alias(new_uri, target_uri, …)` | 给同一记忆加另一条路径 |
-| `search_memory(query, limit?)` | 先触发词召回，再 FTS5 trigram（对中文友好），最后 LIKE 兜底 |
+| `search_memory(query, limit?)` | 先触发词召回，再 FTS5 trigram（对中文友好），最后 LIKE 兜底；配置 Vectorize 时合并语义结果（可选） |
 | `rollback_memory(audit_id)` | 从审计日志撤销一次变更 |
 | `manage_triggers(action, keyword, target_uri?)` | 添加 / 删除 / 列出触发关键词 |
 | `rename_memory(uri, new_name)` | 重命名最后一段路径（节点与内容不变，搜索索引重建，子路径跟随迁移） |
 | `list_audit(uri?, limit?)` | 浏览最近审计记录，取 `audit_id` 用于回滚 |
+| `reindex_vectors()` | *（可选）* 为全部已有记忆补建语义向量；未配置 Vectorize 时为空操作——只在已存了大量记忆后启用 §9 时才需要 |
 
 另外：`create_memory` 支持显式 `title`（路径名），内容首行不再被吞；REST API 可通过 `/api/*` + Bearer 直接访问。
 
@@ -127,6 +129,30 @@ open https://mem.example.com/admin/
 - Zero Trust → Access → Applications → Add → self-hosted
 - Domain: `mem.example.com/admin` → policy: 只允许你的邮箱
 - `/mcp` 留在 Access 之外——agent 只用 Bearer 访问
+
+### 9.（可选）语义搜索（Vectorize）
+
+**关键词搜索是默认能力，零额外配置即可用**（触发词 → FTS5 trigram → LIKE）。语义搜索是**可选的附加功能**，解决"记忆与查询概念相关但毫无共同关键词"的场景——比如搜"部署失败"也该召回一条写着"发布流水线挂了，回滚后恢复"的记录。
+
+- **成本**：Vectorize 和 Workers AI embedding 都在免费额度内，个人使用远用不完。不需要语义召回就整节跳过。
+- **原理**：每次记忆写入/更新/重命名/删除时，`@cf/baai/bge-m3`（多语言、支持中文）把标题+内容嵌成 1024 维向量存入 `noc-mem-vec` 索引；`search_memory` 把语义命中与关键词命中合并（去重，语义优先）。
+- **优雅降级**：Vectorize/AI 都是可选绑定——未绑定或出错时搜索静默回退为纯关键词，记忆写入永远不会因此失败。
+
+启用步骤：
+
+```bash
+# 1. 创建索引（一次性）
+npx wrangler vectorize create noc-mem-vec --dimensions 1024 --metric cosine
+
+# 2. 在 wrangler.local.jsonc（以及若用 wrangler.jsonc 部署）加绑定
+# "ai": { "binding": "AI" },
+# "vectorize": [{ "binding": "VECTORIZE", "index_name": "noc-mem-vec" }]
+
+# 3. 重新部署后，为启用前已写入的记忆补建向量：调用 MCP 工具 reindex_vectors()
+#    ——或者不调用；之后的写入会自动索引
+```
+
+启用后 `search_memory` 返回语义 + 关键词结果；`reindex_vectors` 报告 `ok/total`，失败项以 `vector_upsert_failed` 出现在 Workers Logs。
 
 ## 前端
 

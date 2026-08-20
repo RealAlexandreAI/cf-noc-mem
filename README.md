@@ -22,13 +22,14 @@ Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treat
 - **Stateless MCP** (Streamable HTTP): no SSE, no sessions — agents just `POST /mcp`
 - **Tree memory**: `noc://` URIs, browse via `list_memories`
 - **Trigger recall**: keywords bound to memories rank above full-text search
+- **Semantic search** *(optional)*: multilingual embeddings (bge-m3) + Vectorize merge semantic recall with keyword search — see [§9](#9-optional-semantic-search-vectorize)
 - **Foresight**: memories can carry an expiry — they auto-leave search when stale
 - **Daily briefing**: `system://briefing` — what changed, what's expiring, what's cold
 - **Focus**: `system://focus` — recently-updated memories grouped into working trees, so long-running work resumes without browsing
 - **Audit + rollback**: every change is tracked; mistakes are undoable
 - **Auto-forget** ("dream"): cron drops old versions, expired content, and cold low-priority memories — no manual cleanup
 
-## MCP tools (11)
+## MCP tools (12)
 
 | tool | purpose |
 |------|---------|
@@ -38,11 +39,12 @@ Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treat
 | `update_memory(uri, append?/old_string+new_string?, priority?, disclosure?, expires_at?, relation?)` | new versioned row; `relation` marks evolution: `replace|enrich|confirm|challenge` |
 | `delete_memory(uri)` | cut a URI path; returns orphaned children if any |
 | `add_alias(new_uri, target_uri, …)` | another path to the same memory |
-| `search_memory(query, limit?)` | trigger-keyword recall first, then FTS5 trigram (CJK-friendly), LIKE fallback |
+| `search_memory(query, limit?)` | trigger-keyword recall first, then FTS5 trigram (CJK-friendly), LIKE fallback; merges semantic hits when Vectorize is configured (optional) |
 | `rollback_memory(audit_id)` | undo a change from the audit log |
 | `manage_triggers(action, keyword, target_uri?)` | add / remove / list trigger keywords |
 | `rename_memory(uri, new_name)` | rename the last path segment (node & content stay, search re-indexed, descendant paths follow) |
 | `list_audit(uri?, limit?)` | browse recent audit entries to pick an `audit_id` for rollback |
+| `reindex_vectors()` | *(optional)* backfill semantic vectors for all existing memories; no-op without Vectorize — only needed after enabling §9 on an already-populated store |
 
 Also: `create_memory` accepts an explicit `title` (path name) so the content's first line is not eaten; REST API is reachable at `/api/*` with Bearer auth.
 
@@ -129,6 +131,30 @@ The whole panel lives under `/admin`; `/mcp` and static assets stay public (MCP 
 - Zero Trust → Access → Applications → Add → self-hosted
 - Domain: `mem.example.com/admin` → policy: allow your email(s)
 - `/mcp` stays outside Access — agents reach it with Bearer only
+
+### 9. (Optional) Semantic search with Vectorize
+
+**Keyword search is the default and works with zero extra setup** (triggers → FTS5 trigram → LIKE). Semantic search is an **optional add-on** for the case where a memory is conceptually relevant but shares no keywords with the query — e.g. searching `部署失败` should also recall a note written as *"发布流水线挂了，回滚后恢复"*.
+
+- **Cost**: Vectorize and Workers AI embeddings are free-tier eligible; personal usage stays well inside the quota. Skip this section entirely if you don't need semantic recall.
+- **How it works**: on every memory write/update/rename/delete, `@cf/baai/bge-m3` (multilingual, CJK-capable) embeds title+content into a 1024-d vector in the `noc-mem-vec` index; `search_memory` then merges semantic hits with keyword hits (deduped, semantic first).
+- **Graceful degradation**: Vectorize/AI are optional bindings — if unbound or failing, search silently falls back to keyword-only and memory writes never break.
+
+Enable it:
+
+```bash
+# 1. create the index (once)
+npx wrangler vectorize create noc-mem-vec --dimensions 1024 --metric cosine
+
+# 2. add bindings to wrangler.local.jsonc (and wrangler.jsonc if you deploy from it)
+# "ai": { "binding": "AI" },
+# "vectorize": [{ "binding": "VECTORIZE", "index_name": "noc-mem-vec" }]
+
+# 3. redeploy, then backfill vectors for memories written before enabling:
+#    call MCP tool reindex_vectors() — or just wait; new writes index themselves
+```
+
+After enabling, `search_memory` returns semantic + keyword results; `reindex_vectors` reports `ok/total` and any failures land in Workers Logs as `vector_upsert_failed`.
 
 ## Frontend
 

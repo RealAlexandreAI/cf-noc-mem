@@ -18,6 +18,7 @@ import {
   systemRecent,
   updateMemory,
 } from "./db";
+import { reindexAllVectors } from "./vector";
 import { deleteMemoryVector, hybridSearch, upsertMemoryVector } from "./vector";
 
 export const PROTOCOL_VERSION = "2025-06-18";
@@ -167,6 +168,14 @@ const TOOLS: ToolDef[] = [
         uri: { type: "string", description: "Optional filter: only entries touching this memory URI" },
         limit: { type: "integer", minimum: 1, maximum: 200, description: "Max entries, default 20" },
       },
+    },
+  },
+  {
+    name: "reindex_vectors",
+    description: "Backfills semantic vectors for all existing memories (embedding + Vectorize upsert). Optional: only needed after enabling semantic search on an already-populated store; new writes are indexed automatically. No-op when Vectorize is not configured.",
+    inputSchema: {
+      type: "object",
+      properties: {},
     },
   },
 ];
@@ -332,6 +341,12 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
       const entries = await listAudit(db, Number(args.limit ?? 20), args.uri == null ? undefined : String(args.uri));
       if (entries.length === 0) return "(no audit entries)";
       return entries.map((a) => `#${a.id} ${a.op} ${a.uri ?? "(none)"}${a.relation ? ` relation=${a.relation}` : ""} @ ${a.created_at}`).join("\n");
+    }
+    case "reindex_vectors": {
+      if (!env.VECTORIZE) return "Semantic search not configured (no Vectorize binding) — nothing to do.";
+      const stats = await reindexAllVectors(env);
+      if (stats.total === 0) return "No memories to reindex (store empty).";
+      return `Reindexed ${stats.ok}/${stats.total} memories (${stats.failed} failed — see Workers Logs vector_upsert_failed).`;
     }
     default:
       throw new Error(`Unknown tool: ${name}`);
