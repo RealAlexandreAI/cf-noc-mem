@@ -18,6 +18,16 @@ const EMBEDDING_MODEL = "@cf/baai/bge-m3";
 const SNIPPET_LEN = 200;
 const MAX_TEXT_CHARS = 8000;
 
+/**
+ * Vectorize ids are capped at 64 bytes; long noc:// URIs (deep paths) can
+ * exceed that. Hash the URI to a fixed 40-char SHA-1 hex id; the original
+ * URI is kept in metadata for display/dedup.
+ */
+async function vectorId(uri: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(uri));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export interface VectorHit {
   uri: string;
   score: number;
@@ -72,7 +82,7 @@ export async function upsertMemoryVector(
     }
     await upsertVectors(env, [
       {
-        id: uri,
+        id: await vectorId(uri),
         values: vector,
         metadata: { uri, title: title ?? "", snippet: content.slice(0, SNIPPET_LEN), priority },
       },
@@ -96,18 +106,30 @@ export async function reindexAllVectors(env: Env): Promise<{ total: number; ok: 
   const entries = await listAll(env.DB);
   let ok = 0;
   const failed: { uri: string; err: string }[] = [];
+  const writtenUris: string[] = [];
   for (const e of entries) {
     try {
       const mem = await readMemory(env.DB, e.uri);
       if (!mem) continue;
       const r = await upsertMemoryVector(env, e.uri, e.title, mem.content, e.priority);
-      if (r.ok) ok++;
+      if (r.ok) {
+        ok++;
+        writtenUris.push(e.uri);
+      }
       else failed.push({ uri: e.uri, err: r.err ?? "unknown" });
     }
     catch (err) {
       // readMemory failure for a single entry must not abort the pass
       failed.push({ uri: e.uri, err: String(err).slice(0, 160) });
     }
+  }
+  // Drop legacy vectors keyed by the raw URI (pre-hash ids); new ids are
+  // sha1(uri) so this only removes duplicates, never freshly-written rows.
+  try {
+    if (writtenUris.length) await env.VECTORIZE.deleteByIds(writtenUris);
+  }
+  catch {
+    // tolerate
   }
   return { total: entries.length, ok, failed };
 }
@@ -116,7 +138,7 @@ export async function reindexAllVectors(env: Env): Promise<{ total: number; ok: 
 export async function deleteMemoryVector(env: Env, uri: string): Promise<void> {
   if (!env.VECTORIZE) return;
   try {
-    await env.VECTORIZE.deleteByIds([uri]);
+    await env.VECTORIZE.deleteByIds([await vectorId(uri)]);
   }
   catch {
     // tolerate
