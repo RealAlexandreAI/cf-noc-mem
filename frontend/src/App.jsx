@@ -87,10 +87,6 @@ function Layout() {
         <Routes>
           <Route path="/" element={<Navigate to="/review" replace />} />
 
-          {/* /admin was the old panel URL (pre-SPA); redirect to keep old links working */}
-          <Route path="/admin" element={<Navigate to="/" replace />} />
-          <Route path="/admin/*" element={<Navigate to="/" replace />} />
-
           <Route path="/review" element={<ReviewPage />} />
 
           <Route path="/memory" element={<MemoryBrowser />} />
@@ -211,7 +207,8 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
+    // Whole panel lives under /admin so Cloudflare Access guards the entire app.
+    <BrowserRouter basename="/admin">
       <Layout />
     </BrowserRouter>
   );

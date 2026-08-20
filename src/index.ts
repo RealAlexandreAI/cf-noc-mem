@@ -43,9 +43,18 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
 
-    // The React SPA frontend is served by the ASSETS binding. /api/*, /mcp,
-    // /admin/* and /health are handled by the worker; everything else falls
-    // through to the SPA (assets).
+    // The whole panel lives under /admin (Cloudflare Access guards /admin).
+    // /mcp and /health stay public (worker-gated); /assets/* are static build
+    // files (index.html references them by absolute path). Everything else
+    // 302s to /admin/ so no page is served outside the Access boundary.
+    const isAsset = url.pathname.startsWith("/assets/");
+    if (!isAsset && url.pathname !== "/mcp" && url.pathname !== "/health" && !url.pathname.startsWith("/admin")) {
+      const target = "/admin/";
+      return new Response(null, {
+        status: 302,
+        headers: { location: target },
+      });
+    }
 
     // Admin data endpoints: dual-mode (Access header OR Bearer), see auth.ts.
     const denied = checkAuth(req, env);
