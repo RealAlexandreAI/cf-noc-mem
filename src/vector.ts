@@ -97,17 +97,23 @@ export async function upsertMemoryVector(
 }
 
 /**
- * Backfill vectors for every existing memory (e.g. after enabling Vectorize
- * or embedding model changes). Returns write stats plus per-uri failure
- * reasons; single-entry failures never abort the pass.
+ * Backfill vectors for existing memories in batches (Workers free plan caps
+ * subrequests per invocation at 50, so one big pass fails; limit+offset let
+ * callers walk the store). Returns per-uri failure reasons; single-entry
+ * failures never abort the batch.
  */
-export async function reindexAllVectors(env: Env): Promise<{ total: number; ok: number; failed: { uri: string; err: string }[] }> {
-  if (!env.VECTORIZE) return { total: 0, ok: 0, failed: [] };
+export async function reindexAllVectors(
+  env: Env,
+  limit = 20,
+  offset = 0,
+): Promise<{ total: number; ok: number; processed: number; failed: { uri: string; err: string }[] }> {
+  if (!env.VECTORIZE) return { total: 0, ok: 0, processed: 0, failed: [] };
   const entries = await listAll(env.DB);
+  const batch = entries.slice(offset, offset + limit);
   let ok = 0;
   const failed: { uri: string; err: string }[] = [];
   const writtenUris: string[] = [];
-  for (const e of entries) {
+  for (const e of batch) {
     try {
       const mem = await readMemory(env.DB, e.uri);
       if (!mem) continue;
@@ -131,7 +137,7 @@ export async function reindexAllVectors(env: Env): Promise<{ total: number; ok: 
   catch {
     // tolerate
   }
-  return { total: entries.length, ok, failed };
+  return { total: entries.length, ok, processed: batch.length, failed };
 }
 
 /** Remove a memory's vector. Never throws. */

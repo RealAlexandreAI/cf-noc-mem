@@ -44,7 +44,7 @@ Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treat
 | `manage_triggers(action, keyword, target_uri?)` | add / remove / list trigger keywords |
 | `rename_memory(uri, new_name)` | rename the last path segment (node & content stay, search re-indexed, descendant paths follow) |
 | `list_audit(uri?, limit?)` | browse recent audit entries to pick an `audit_id` for rollback |
-| `reindex_vectors()` | *(optional)* backfill semantic vectors for all existing memories; no-op without Vectorize — only needed after enabling §9 on an already-populated store |
+| `reindex_vectors(limit?, offset?)` | *(optional)* backfill semantic vectors in batches (Workers subrequest cap); walk with offset until done — only needed after enabling §9 on an already-populated store |
 
 Also: `create_memory` accepts an explicit `title` (path name) so the content's first line is not eaten; REST API is reachable at `/api/*` with Bearer auth.
 

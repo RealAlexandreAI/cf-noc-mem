@@ -172,10 +172,13 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "reindex_vectors",
-    description: "Backfills semantic vectors for all existing memories (embedding + Vectorize upsert). Optional: only needed after enabling semantic search on an already-populated store; new writes are indexed automatically. No-op when Vectorize is not configured.",
+    description: "Backfills semantic vectors for existing memories (embedding + Vectorize upsert) in batches — call repeatedly with offset until done. Optional: only needed after enabling semantic search on an already-populated store; new writes are indexed automatically. No-op when Vectorize is not configured.",
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        limit: { type: "integer", minimum: 1, maximum: 40, description: "Batch size (Workers subrequest cap ~50), default 20" },
+        offset: { type: "integer", minimum: 0, description: "Skip first N memories, default 0" },
+      },
     },
   },
 ];
@@ -344,11 +347,15 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
     }
     case "reindex_vectors": {
       if (!env.VECTORIZE) return "Semantic search not configured (no Vectorize binding) — nothing to do.";
-      const stats = await reindexAllVectors(env);
-      if (stats.total === 0) return "No memories to reindex (store empty).";
-      const sample = stats.failed.slice(0, 5).map((f) => `${f.uri}: ${f.err}`).join("; ");
-      const tail = stats.failed.length > 5 ? ` (+${stats.failed.length - 5} more)` : "";
-      return `Reindexed ${stats.ok}/${stats.total} memories. ${stats.failed.length ? `Failed ${stats.failed.length}${tail} — ${sample}` : "All vectors up to date."}`;
+      const limit = Math.min(Number(args.limit ?? 20), 40);
+      const offset = Math.max(Number(args.offset ?? 0), 0);
+      const stats = await reindexAllVectors(env, limit, offset);
+      const next = offset + stats.processed;
+      const sample = stats.failed.slice(0, 3).map((f) => `${f.uri}: ${f.err}`).join("; ");
+      const head = `Reindexed ${stats.ok}/${stats.processed} of ${stats.total} memories (offset ${offset}).`;
+      const progress = next < stats.total ? ` Call again with offset=${next} for the next batch.` : " All done.";
+      const failure = stats.failed.length ? `\nFailed ${stats.failed.length}: ${sample}${stats.failed.length > 3 ? " …" : ""}` : "";
+      return head + progress + failure;
     }
     default:
       throw new Error(`Unknown tool: ${name}`);

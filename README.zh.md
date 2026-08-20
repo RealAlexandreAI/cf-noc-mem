@@ -42,7 +42,7 @@
 | `manage_triggers(action, keyword, target_uri?)` | 添加 / 删除 / 列出触发关键词 |
 | `rename_memory(uri, new_name)` | 重命名最后一段路径（节点与内容不变，搜索索引重建，子路径跟随迁移） |
 | `list_audit(uri?, limit?)` | 浏览最近审计记录，取 `audit_id` 用于回滚 |
-| `reindex_vectors()` | *（可选）* 为全部已有记忆补建语义向量；未配置 Vectorize 时为空操作——只在已存了大量记忆后启用 §9 时才需要 |
+| `reindex_vectors(limit?, offset?)` | *（可选）* 分批补建语义向量（Workers 子请求上限）；用 offset 递进直到完成——只在已存大量记忆后启用 §9 时才需要 |
 
 另外：`create_memory` 支持显式 `title`（路径名），内容首行不再被吞；REST API 可通过 `/api/*` + Bearer 直接访问。
 
