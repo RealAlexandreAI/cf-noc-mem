@@ -329,9 +329,12 @@ export async function deleteMemory(db: D1Database, uri: string): Promise<DeleteR
     .bind(nodeUuid, nodeUuid, nodeUuid)
     .first<{ n: number }>();
   if ((nodeRefs?.n ?? 0) === 0) {
-    await db.prepare("DELETE FROM search_documents WHERE node_uuid = ?").bind(nodeUuid).run();
+    await removeSearchDocument(db, domain, path, nodeUuid);
     await db.prepare("DELETE FROM memories WHERE node_uuid = ?").bind(nodeUuid).run();
     await db.prepare("DELETE FROM nodes WHERE uuid = ?").bind(nodeUuid).run();
+  } else {
+    // node still referenced by other paths/edges — drop just this path's index entry
+    await removeSearchDocument(db, domain, path);
   }
   await recordAudit(db, "delete", uri, nodeUuid, before, null);
   return { deleted: true, message: "Deleted", orphanChildren: [] };
@@ -652,7 +655,7 @@ export async function rollbackMemory(db: D1Database, auditId: number): Promise<R
       if (!a.uri) return { ok: false, message: "alias rollback needs uri" };
       const { domain, path } = parseUri(a.uri);
       const del = await db.prepare("DELETE FROM paths WHERE domain = ? AND path = ?").bind(domain, path).run();
-      await db.prepare("DELETE FROM search_documents WHERE domain = ? AND path = ?").bind(domain, path).run();
+      await removeSearchDocument(db, domain, path);
       return { ok: (del.meta.changes ?? 0) > 0, message: `removed alias: ${a.uri}` };
     }
     default:
@@ -817,10 +820,22 @@ async function upsertSearchDocument(
     )
     .bind(domain, path, nodeUuid, memoryId, uri, content, disclosure, priority, nowSql())
     .run();
+  // FTS is a standalone virtual table — replace, never accumulate.
+  await db.prepare("DELETE FROM search_fts WHERE uri = ?").bind(uri).run();
   await db
     .prepare("INSERT INTO search_fts (uri, content, disclosure, search_terms) VALUES (?, ?, ?, ?)")
     .bind(uri, content, disclosure ?? "", priority.toString())
     .run();
+}
+
+/** Remove a document from both search tables (used on delete paths). */
+async function removeSearchDocument(db: D1Database, domain: string, path: string, nodeUuid?: string): Promise<void> {
+  await db.prepare("DELETE FROM search_documents WHERE domain = ? AND path = ?").bind(domain, path).run();
+  const uri = makeUri(domain, path);
+  await db.prepare("DELETE FROM search_fts WHERE uri = ?").bind(uri).run();
+  if (nodeUuid) {
+    await db.prepare("DELETE FROM search_documents WHERE node_uuid = ? AND domain = ? AND path != ?").bind(nodeUuid, domain, path).run();
+  }
 }
 
 export async function syncSearchFromPaths(db: D1Database): Promise<void> {

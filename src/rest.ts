@@ -139,7 +139,8 @@ export async function handleRest(req: Request, url: URL, env: Env): Promise<Resp
     }
     if (sub === "search") {
       const hits = await searchMemory(env.DB, q("q"), Number(q("limit") || 20));
-      return json(hits);
+      // upstream shape: { results: [...] } — frontend reads res.results
+      return json({ results: hits });
     }
     if (sub === "glossary") {
       if (method === "GET") return json([]);
