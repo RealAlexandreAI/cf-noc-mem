@@ -51,8 +51,9 @@ async function upsertVectors(env: Env, vectors: { id: string; values: number[]; 
 
 /**
  * Embed a memory (title + content) and upsert its vector. Never throws;
- * returns whether the vector was actually written (false when Vectorize is
- * unbound or any step failed — memory writes must never break on this).
+ * returns whether the vector was actually written and the failure reason
+ * (false when Vectorize is unbound or any step failed — memory writes must
+ * never break on this).
  */
 export async function upsertMemoryVector(
   env: Env,
@@ -60,14 +61,14 @@ export async function upsertMemoryVector(
   title: string | null,
   content: string,
   priority: number,
-): Promise<boolean> {
-  if (!env.VECTORIZE) return false;
+): Promise<{ ok: boolean; err?: string }> {
+  if (!env.VECTORIZE) return { ok: false, err: "no_vectorize" };
   try {
     const text = `${title ?? ""}\n${content}`.slice(0, MAX_TEXT_CHARS);
     const [vector] = await embedTexts(env, [text]);
     if (!vector?.length) {
       console.warn(JSON.stringify({ event: "embed_empty", uri, model: EMBEDDING_MODEL }));
-      return false;
+      return { ok: false, err: "embed_empty" };
     }
     await upsertVectors(env, [
       {
@@ -76,35 +77,39 @@ export async function upsertMemoryVector(
         metadata: { uri, title: title ?? "", snippet: content.slice(0, SNIPPET_LEN), priority },
       },
     ]);
-    return true;
+    return { ok: true };
   }
   catch (e) {
     // tolerate: memory write succeeded, semantic recall just lags
     console.warn(JSON.stringify({ event: "vector_upsert_failed", uri, err: String(e) }));
-    return false;
+    return { ok: false, err: String(e).slice(0, 160) };
   }
 }
 
 /**
  * Backfill vectors for every existing memory (e.g. after enabling Vectorize
- * or embedding model changes). Returns write stats; per-uri failures are
- * logged as vector_upsert_failed / embed_empty in Workers Logs.
+ * or embedding model changes). Returns write stats plus per-uri failure
+ * reasons; single-entry failures never abort the pass.
  */
-export async function reindexAllVectors(env: Env): Promise<{ total: number; ok: number; failed: number }> {
-  if (!env.VECTORIZE) return { total: 0, ok: 0, failed: 0 };
+export async function reindexAllVectors(env: Env): Promise<{ total: number; ok: number; failed: { uri: string; err: string }[] }> {
+  if (!env.VECTORIZE) return { total: 0, ok: 0, failed: [] };
   const entries = await listAll(env.DB);
   let ok = 0;
+  const failed: { uri: string; err: string }[] = [];
   for (const e of entries) {
     try {
       const mem = await readMemory(env.DB, e.uri);
       if (!mem) continue;
-      if (await upsertMemoryVector(env, e.uri, e.title, mem.content, e.priority)) ok++;
+      const r = await upsertMemoryVector(env, e.uri, e.title, mem.content, e.priority);
+      if (r.ok) ok++;
+      else failed.push({ uri: e.uri, err: r.err ?? "unknown" });
     }
-    catch {
+    catch (err) {
       // readMemory failure for a single entry must not abort the pass
+      failed.push({ uri: e.uri, err: String(err).slice(0, 160) });
     }
   }
-  return { total: entries.length, ok, failed: entries.length - ok };
+  return { total: entries.length, ok, failed };
 }
 
 /** Remove a memory's vector. Never throws. */

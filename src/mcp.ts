@@ -346,7 +346,9 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
       if (!env.VECTORIZE) return "Semantic search not configured (no Vectorize binding) — nothing to do.";
       const stats = await reindexAllVectors(env);
       if (stats.total === 0) return "No memories to reindex (store empty).";
-      return `Reindexed ${stats.ok}/${stats.total} memories (${stats.failed} failed — see Workers Logs vector_upsert_failed).`;
+      const sample = stats.failed.slice(0, 5).map((f) => `${f.uri}: ${f.err}`).join("; ");
+      const tail = stats.failed.length > 5 ? ` (+${stats.failed.length - 5} more)` : "";
+      return `Reindexed ${stats.ok}/${stats.total} memories. ${stats.failed.length ? `Failed ${stats.failed.length}${tail} — ${sample}` : "All vectors up to date."}`;
     }
     default:
       throw new Error(`Unknown tool: ${name}`);
