@@ -3,8 +3,8 @@
   "app": {
     "nav": {
       "brand": "Nocturne Admin",
-      "review": "Review & Audit",
-      "memory": "Memory Explorer",
+      "review": "Memory Intake",
+      "memory": "Memory Browse",
       "maintenance": "Brain Cleanup",
       "settings": "Settings",
       "language": "Language"
@@ -219,8 +219,8 @@
       "add_domain_placeholder": "New domain..."
     },
     "sidebar": {
-      "title": "Memory Core",
-      "subtitle": "Neural Explorer v2.0",
+      "title": "Memory Vault",
+      "subtitle": "all memories",
       "domains": "Memory Tree",
       "current_path": "Current Path",
       "domain_label": "{{domain}} Memories"
@@ -245,8 +245,8 @@
       "edit": "Edit",
       "save": "Save Changes",
       "saving": "Saving...",
-      "priority": "Priority",
-      "priority_hint": "(Lower values = higher priority)",
+      "priority": "Level",
+      "priority_hint": "(lower = more important)",
       "disclosure": "Disclosure",
       "disclosure_hint": "(When to recall)",
       "disclosure_label": "Disclosure:",
@@ -261,8 +261,8 @@
       "optional": "(Optional)",
       "title_hint": "Alphanumeric, hyphens, underscores only",
       "title_placeholder": "e.g., my_memory",
-      "priority_label": "Priority",
-      "priority_hint": "0 = highest, 5+ = lowest",
+      "priority_label": "Level",
+      "priority_hint": "(lower = more important)",
       "disclosure_label": "Disclosure",
       "disclosure_placeholder": "When to recall this memory...",
       "content_label": "Content",
@@ -294,7 +294,7 @@
       "root_option": "(Root)",
       "name_placeholder": "Name",
       "disclosure_placeholder": "Disclosure...",
-      "priority": "Priority",
+      "priority": "Level",
       "add": "Add Alias",
       "remove_error": "Failed to remove alias: {{error}}"
     },
@@ -327,21 +327,21 @@
       "mass_integration_failed": "Mass integration failed: {{error}}"
     },
     "confirm": {
-      "reject_title": "Reject Changes",
+      "reject_title": "Reject changes",
       "reject_message": "Reject changes for node group {{uri}}? This will restore the memory state.",
       "reject_label": "Reject",
-      "integrate_all_title": "Integrate All",
-      "integrate_all_message": "Integrate all pending memories?",
-      "integrate_all_label": "Integrate All"
+      "integrate_all_title": "Approve all",
+      "integrate_all_message": "Approve all pending memory changes?",
+      "integrate_all_label": "Approve all"
     },
     "sidebar": {
-      "title": "Global Review",
-      "subtitle": "memory change review"
+      "title": "Memory Intake",
+      "subtitle": "pending memory changes"
     },
     "action": {
-      "integrate_all": "Integrate All",
-      "reject_group": "Reject Group",
-      "integrate_group": "Integrate Group",
+      "integrate_all": "Approve all",
+      "reject_group": "Reject",
+      "integrate_group": "Approve",
       "retry": "Retry Connection"
     },
     "metadata": {
@@ -380,8 +380,8 @@
       "connection_lost": "Connection Lost"
     },
     "empty": {
-      "awaiting_input": "Awaiting Input",
-      "select_memory": "Select a memory fragment to inspect"
+      "awaiting_input": "No pending changes",
+      "select_memory": "Select a change to review"
     }
   },
   "maintenance": {
@@ -425,7 +425,7 @@
       "restore_parent_placeholder": "Select parent path",
       "restore_leaf_placeholder": "New segment name",
       "restore_disclosure_placeholder": "Enter trigger condition (Disclosure)",
-      "restore_priority_label": "Priority",
+      "restore_priority_label": "Level",
       "restore_namespace_label": "Namespace",
       "restore_namespace_default": "(default)",
       "restore_confirm_btn": "Confirm Restore",

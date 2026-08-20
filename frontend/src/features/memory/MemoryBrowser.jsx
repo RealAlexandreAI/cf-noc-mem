@@ -23,7 +23,7 @@ import { displayUri } from '../../lib/utils';
 import { useLocale } from '../../i18n/useLocale';
 import CreateMemoryModal from './components/CreateMemoryModal';
 import AliasManager from './components/AliasManager';
-import PriorityBadge from './components/PriorityBadge';
+import LevelBadge from './components/LevelBadge';
 import GlossaryHighlighter from './components/GlossaryHighlighter';
 import KeywordManager from './components/KeywordManager';
 import DomainNode from './components/MemorySidebar';
@@ -332,7 +332,7 @@ export default function MemoryBrowser() {
                    <div className="min-w-0 flex-1">
                      <div className="flex items-center gap-2 mb-1">
                        <span className="text-sm font-semibold text-slate-300 group-hover:text-indigo-200 transition-colors">{item.name}</span>
-                       <PriorityBadge priority={item.priority} />
+                       <LevelBadge priority={item.priority} />
                      </div>
                      <code className="text-[11px] font-mono text-slate-600 block mb-1.5">{displayUri(item.uri)}</code>
                      {item.snippet && <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{item.snippet}</p>}
@@ -382,7 +382,7 @@ export default function MemoryBrowser() {
                                             {node.name || path.split('/').pop()}
                                           </h1>
                                         )}
-                                        <PriorityBadge priority={node.priority} size="lg" />
+                                        <LevelBadge priority={node.priority} size="lg" />
                                     </div>
                                     
                                     {node.disclosure && !editing && (

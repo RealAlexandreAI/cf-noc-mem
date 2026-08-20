@@ -2,8 +2,8 @@
   "app": {
     "nav": {
       "brand": "Nocturne 管理面板",
-      "review": "审查与审计",
-      "memory": "记忆浏览器",
+      "review": "记忆准入",
+      "memory": "记忆浏览",
       "maintenance": "大脑清理",
       "settings": "设置",
       "language": "语言"
@@ -218,8 +218,8 @@
       "add_domain_placeholder": "新域名..."
     },
     "sidebar": {
-      "title": "记忆核心",
-      "subtitle": "神经探索者 v2.0",
+      "title": "记忆库",
+      "subtitle": "全部记忆",
       "domains": "记忆树",
       "current_path": "当前路径",
       "domain_label": "{{domain}} 记忆"
@@ -244,8 +244,8 @@
       "edit": "编辑",
       "save": "保存更改",
       "saving": "保存中...",
-      "priority": "优先级",
-      "priority_hint": "（数字越小优先级越高）",
+      "priority": "等级",
+      "priority_hint": "（数字越小等级越高）",
       "disclosure": "触发条件",
       "disclosure_hint": "（何时回想）",
       "disclosure_label": "触发条件：",
@@ -260,8 +260,8 @@
       "optional": "（可选）",
       "title_hint": "仅限字母数字、连字符、下划线",
       "title_placeholder": "例如：my_memory",
-      "priority_label": "优先级",
-      "priority_hint": "0 = 最高，5+ = 最低",
+      "priority_label": "等级",
+      "priority_hint": "（数字越小等级越高）",
       "disclosure_label": "触发条件",
       "disclosure_placeholder": "何时回想此记忆...",
       "content_label": "内容",
@@ -293,7 +293,7 @@
       "root_option": "（根）",
       "name_placeholder": "名称",
       "disclosure_placeholder": "触发条件...",
-      "priority": "优先级",
+      "priority": "等级",
       "add": "添加别名",
       "remove_error": "移除别名失败：{{error}}"
     },
@@ -326,21 +326,21 @@
       "mass_integration_failed": "批量合并失败：{{error}}"
     },
     "confirm": {
-      "reject_title": "拒绝变更",
+      "reject_title": "驳回变更",
       "reject_message": "拒绝节点组 {{uri}} 的变更？这将还原记忆状态。",
-      "reject_label": "拒绝",
-      "integrate_all_title": "全部合并",
-      "integrate_all_message": "合并所有待处理的记忆？",
-      "integrate_all_label": "全部合并"
+      "reject_label": "驳回",
+      "integrate_all_title": "全部批准",
+      "integrate_all_message": "批准所有待处理的记忆变更？",
+      "integrate_all_label": "全部批准"
     },
     "sidebar": {
-      "title": "全局审查",
-      "subtitle": "记忆变更审查"
+      "title": "记忆准入",
+      "subtitle": "待审批的记忆变更"
     },
     "action": {
-      "integrate_all": "全部合并",
-      "reject_group": "拒绝组",
-      "integrate_group": "合并组",
+      "integrate_all": "全部批准",
+      "reject_group": "驳回",
+      "integrate_group": "批准",
       "retry": "重试连接"
     },
     "metadata": {
@@ -379,8 +379,8 @@
       "connection_lost": "连接丢失"
     },
     "empty": {
-      "awaiting_input": "等待输入",
-      "select_memory": "选择一个记忆片段来检查"
+      "awaiting_input": "暂无待审批变更",
+      "select_memory": "选择一个变更来检查"
     }
   },
   "maintenance": {
@@ -424,7 +424,7 @@
       "restore_parent_placeholder": "选择父路径",
       "restore_leaf_placeholder": "新节点名称",
       "restore_disclosure_placeholder": "输入触发条件（Disclosure）",
-      "restore_priority_label": "优先级",
+      "restore_priority_label": "等级",
       "restore_namespace_label": "命名空间",
       "restore_namespace_default": "（默认）",
       "restore_confirm_btn": "确认恢复",
