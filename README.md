@@ -47,6 +47,7 @@ Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treat
 git clone https://github.com/RealAlexandreAI/cf-noc-mem.git
 cd cf-noc-mem
 npm install
+npx wrangler login   # if not already logged in
 ```
 
 ### 3. Configure
@@ -62,13 +63,22 @@ echo "API_TOKEN=dev-token" > .dev.vars
 ### 4. Provision D1 + R2
 
 ```bash
-# create database + bucket, then wire the ids into wrangler.jsonc
+# create database + bucket
 npx wrangler d1 create noc_mem
 npx wrangler r2 bucket create noc-mem-snapshots
-npx wrangler d1 migrations apply noc_mem --remote
 ```
 
-Update `wrangler.jsonc`: fill `d1_databases[0].database_id` and `r2_buckets[0].bucket_name` with the values printed above.
+Then edit `wrangler.jsonc` and fill in the ids printed by the commands above:
+
+```jsonc
+"d1_databases": [{ "database_name": "noc_mem", "database_id": "<paste here>" }],
+"r2_buckets":   [{ "bucket_name": "noc-mem-snapshots" }]
+```
+
+```bash
+# apply the schema
+npx wrangler d1 migrations apply noc_mem --remote
+```
 
 ### 5. Deploy
 
@@ -90,13 +100,13 @@ curl -X POST https://mem.example.com/mcp \
   -H "Authorization: Bearer $API_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
 
-# admin panel (data API is Bearer or, optionally, Cloudflare Access)
-open https://mem.example.com/
+# admin panel lives at /admin/ (any non-/admin path redirects there)
+open https://mem.example.com/admin/
 ```
 
 ### 8. Protect the admin panel (recommended)
 
-The web panel at `/` is a UI shell; the real data API (`/admin/api/*`) requires your Bearer token. For personal use, put the whole site behind **Cloudflare Access**:
+The whole panel lives under `/admin`; `/mcp` and static assets stay public (MCP is Bearer-gated, assets are a UI shell with no data). Put the panel behind **Cloudflare Access**:
 
 - Zero Trust → Access → Applications → Add → self-hosted
 - Domain: `mem.example.com/admin` → policy: allow your email(s)
@@ -104,14 +114,31 @@ The web panel at `/` is a UI shell; the real data API (`/admin/api/*`) requires 
 
 ## Frontend
 
-A React admin panel (Vite) at `frontend/`: memory tree browser, review & rollback of pending changes, search, trigger management. Served by the Worker's assets binding.
+A React admin panel (Vite) at `frontend/`, served by the Worker's assets binding. Two pages:
+
+- `/admin/review` — **记忆准入 / Memory Intake**: pending changes from the audit log; approve or rollback
+- `/admin/memory` — **记忆浏览 / Memory Browse**: the memory tree (`noc://`), search, create/edit/delete, trigger keywords, boot list
+
+## Agent plugins
+
+Deploy once, then plug any agent into your instance:
+
+- **[dsh-noc-memory](https://www.npmjs.com/package/dsh-noc-memory)** — dsh plugin: session-start boot + daily briefing + memory tools (`dsh plugin --profile web add dsh-noc-memory`)
+- **[pi-noc-memory](https://www.npmjs.com/package/pi-noc-memory)** — pi extension: `SessionStart` boot protocol + memory rules (`pi install npm:pi-noc-memory`)
+
+Both talk to your `/mcp` endpoint with a Bearer token.
 
 ## Tests
 
+Frontend unit tests (vitest):
+
 ```bash
-npm test            # unit tests (vitest)
-npm run test:e2e    # optional: local + remote D1 flow checks
+cd frontend
+npm test          # watch mode
+npm run test:run  # single pass (CI-friendly)
 ```
+
+Worker scripts (`package.json`): `npm run dev` (wrangler dev), `npm run deploy`, `npm run db:migrate:remote`.
 
 ## License
 
@@ -119,6 +146,6 @@ MIT — fork it, deploy it, make it yours.
 
 ## Related
 
-- [dsh-noc-memory](https://github.com/RealAlexandreAI/dsh-noc-memory) — dsh plugin (nocturne-style agent memory tools for dsh)
-- [pi-noc-memory](https://github.com/RealAlexandreAI/pi-noc-memory) — pi extension (session-start boot + memory tools)
+- [dsh-noc-memory](https://github.com/RealAlexandreAI/dsh-noc-memory) — dsh plugin, same memory tools
+- [pi-noc-memory](https://github.com/RealAlexandreAI/pi-noc-memory) — pi extension (session-start boot + briefing)
 - [nocturne_memory](https://github.com/Dataojitori/nocturne_memory) — the upstream project this is derived from
