@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cf-noc-mem",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "migrations": [
+    {
+      "new_sqlite_classes": [],
+      "tag": "v1"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "noc_mem",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "SNAPSHOTS",
+      "bucket_name": "noc-mem-snapshots"
+    }
+  ],
+  "vars": {
+    "API_TOKEN": "REPLACE_WITH_LONG_RANDOM_TOKEN",
+    "MCP_MAX_CONTENT_BYTES": "65536"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
