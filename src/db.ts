@@ -625,6 +625,69 @@ export async function systemBriefing(db: D1Database): Promise<string> {
 }
 
 // ===========================================================================
+// health diagnostics (system://diagnostic/<domain>)
+// ===========================================================================
+
+export async function systemDiagnostic(db: D1Database, domain: string): Promise<string> {
+  const dom = domain || DEFAULT_DOMAIN;
+  const active = await db
+    .prepare(
+      `SELECT p.path, e.name AS title, e.priority, n.last_accessed_at, m.expires_at, m.created_at
+       FROM paths p JOIN edges e ON e.id = p.edge_id JOIN memories m ON m.node_uuid = p.node_uuid AND m.deprecated = 0
+       JOIN nodes n ON n.uuid = p.node_uuid
+       WHERE p.domain = ? AND p.path != ''
+       ORDER BY e.priority ASC`
+    )
+    .bind(dom)
+    .all<{ path: string; title: string; priority: number; last_accessed_at: string | null; expires_at: string | null; created_at: string }>();
+
+  const now = nowSql();
+  const staleCutoff = new Date(Date.now() - 60 * 86400_000).toISOString().slice(0, 19).replace("T", " ");
+  const stale: string[] = [];
+  const expired: string[] = [];
+  const unreadTop = new Set<string>();
+  for (const r of active.results ?? []) {
+    if (r.expires_at && r.expires_at < now) expired.push(`- ${makeUri(dom, r.path)}: ${r.title} (expired ${r.expires_at})`);
+    if ((r.last_accessed_at === null || r.last_accessed_at < staleCutoff) && r.priority > 3) {
+      stale.push(`- [p${r.priority}] ${makeUri(dom, r.path)}: ${r.title} (last seen ${r.last_accessed_at ?? "never"})`);
+    }
+    if ((r.last_accessed_at === null || r.last_accessed_at < staleCutoff) && r.priority <= 1) {
+      unreadTop.add(`- [p${r.priority}] ${makeUri(dom, r.path)}: ${r.title}`);
+    }
+  }
+
+  const orphanNodes = await db
+    .prepare(
+      `SELECT n.uuid FROM nodes n
+       WHERE n.uuid != ? AND NOT EXISTS (SELECT 1 FROM paths p WHERE p.node_uuid = n.uuid)
+       AND NOT EXISTS (SELECT 1 FROM edges e WHERE e.parent_uuid = n.uuid OR e.child_uuid = n.uuid)`
+    )
+    .bind(ROOT_NODE)
+    .all<{ uuid: string }>();
+  const danglingTriggers = await db
+    .prepare("SELECT COUNT(*) AS n FROM triggers t WHERE NOT EXISTS (SELECT 1 FROM nodes n WHERE n.uuid = t.node_uuid)")
+    .first<{ n: number }>();
+  const deprecatedVersions = await db.prepare("SELECT COUNT(*) AS n FROM memories WHERE deprecated = 1").first<{ n: number }>();
+
+  const lines: string[] = [`# Diagnostic: ${dom}`, `generated: ${new Date().toISOString()}`, ""];
+  lines.push(`Active memories: ${active.results?.length ?? 0}`);
+  if (unreadTop.size) lines.push("", `## High-priority, never re-accessed (check disclosure/placement)`);
+  for (const u of unreadTop) lines.push(u);
+  if (expired.length) lines.push("", "## Expired (auto-forget will deprecate)");
+  for (const e of expired) lines.push(e);
+  if (stale.length) lines.push("", "## Stale (cold-forget candidates)");
+  for (const s of stale) lines.push(s);
+  lines.push("", "## Integrity");
+  lines.push(`- orphan nodes: ${orphanNodes.results?.length ?? 0}`);
+  lines.push(`- dangling trigger keywords: ${danglingTriggers?.n ?? 0}`);
+  lines.push(`- deprecated versions (history): ${deprecatedVersions?.n ?? 0}`);
+  if (!unreadTop.size && !expired.length && !stale.length && !(orphanNodes.results?.length)) {
+    lines.push("", "No issues found.");
+  }
+  return lines.join("\n");
+}
+
+// ===========================================================================
 // admin: browse / audit / status
 // ===========================================================================
 

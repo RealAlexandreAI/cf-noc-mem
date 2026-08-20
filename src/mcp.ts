@@ -10,6 +10,7 @@ import {
   searchMemory,
   systemBoot,
   systemBriefing,
+  systemDiagnostic,
   systemIndex,
   systemRecent,
   updateMemory,
@@ -28,7 +29,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "read_memory",
     description:
-      "Reads a memory by URI. Special system URIs: system://boot (boot memories), system://index/<domain>, system://recent[/N], system://briefing (daily working-memory briefing).",
+      "Reads a memory by URI. Special system URIs: system://boot (boot memories), system://index/<domain>, system://recent[/N], system://briefing (daily working-memory briefing), system://diagnostic/<domain> (memory health).",
     inputSchema: {
       type: "object",
       properties: { uri: { type: "string", description: "Memory URI, e.g. noc://agent/foo or system://recent/5" } },
@@ -287,6 +288,9 @@ async function handleSystemUri(db: D1Database, uri: string): Promise<string> {
   const rest = uri.replace(/^system:\/\//, "");
   if (rest === "boot") return systemBoot(db);
   if (rest === "briefing") return systemBriefing(db);
+  if (rest.startsWith("diagnostic/")) {
+    return systemDiagnostic(db, rest.slice("diagnostic/".length));
+  }
   if (rest.startsWith("index/")) {
     const items = await systemIndex(db, rest.slice("index/".length));
     return items.map((i) => `${i.uri}: ${i.title}`).join("\n") || "(empty)";
@@ -296,7 +300,7 @@ async function handleSystemUri(db: D1Database, uri: string): Promise<string> {
     const items = await systemRecent(db, Number.isFinite(n) ? n : 10);
     return items.map((i) => `${i.uri}: ${i.title}`).join("\n") || "(empty)";
   }
-  return "Unknown system URI. Use system://boot, system://index/<domain>, system://recent[/N].";
+  return "Unknown system URI. Use system://boot, system://index/<domain>, system://recent[/N], system://briefing, system://diagnostic/<domain>.";
 }
 
 // ===========================================================================
