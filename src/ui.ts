@@ -1,67 +1,244 @@
+// Read-only memory browser panel. Linear-style dark, single file, no deps.
+// Auth: "access" (CF Access validated, worker injected) or "bearer" (token input).
+// All reads go through /admin/boot and /admin/search (Access or Bearer).
 export const UI_HTML = `<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>cf-noc-mem · memory</title>
+<title>cf-noc-mem</title>
 <style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #0d1117; color: #e6edf3; margin: 0; padding: 24px; }
-  h1 { font-size: 18px; font-weight: 600; margin: 0 0 16px; }
-  .bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-  input, button { background: #161b22; color: #e6edf3; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; font-size: 14px; }
-  input#token { width: 320px; font-family: ui-monospace, monospace; }
-  input#q { flex: 1; min-width: 200px; }
-  button { cursor: pointer; }
-  button:hover { background: #21262d; }
-  .mem { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
-  .mem .uri { color: #58a6ff; font-family: ui-monospace, monospace; font-size: 12px; margin-bottom: 6px; }
-  .mem pre { white-space: pre-wrap; font-size: 13px; margin: 0; line-height: 1.6; }
-  .err { color: #f85149; }
-  .hint { color: #8b949e; font-size: 12px; margin-bottom: 12px; }
+  :root {
+    color-scheme: dark;
+    --bg: #0b0b10;
+    --panel: #14141a;
+    --panel-2: #1a1a22;
+    --border: #26262f;
+    --border-2: #33333f;
+    --text: #e8e8ee;
+    --text-2: #9b9ba8;
+    --text-3: #6b6b78;
+    --accent: #5e6ad2;
+    --accent-2: #8b93e8;
+    --green: #3fb68b;
+    --red: #e2605f;
+    --radius: 10px;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100dvh; }
+  aside {
+    border-right: 1px solid var(--border);
+    padding: 28px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    background: var(--panel);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; color: #fff;
+  }
+  .brand-name { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .brand-sub { font-size: 11px; color: var(--text-3); }
+  .status { font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: 8px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+  .dot.ok { background: var(--green); }
+  .dot.err { background: var(--red); }
+  .field label { display: block; font-size: 11px; color: var(--text-3); margin-bottom: 6px; }
+  .field input {
+    width: 100%; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-family: var(--mono); font-size: 12px;
+    outline: none; transition: border-color 0.15s;
+  }
+  .field input:focus { border-color: var(--accent); }
+  .hint { font-size: 11px; color: var(--text-3); line-height: 1.5; }
+  .btn {
+    background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+    padding: 8px 14px; font-size: 13px; font-weight: 500; cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+  }
+  .btn:hover { background: #6b77e0; }
+  .btn:active { transform: translateY(1px); }
+  main { padding: 28px 32px; max-width: 900px; }
+  .search-row { display: flex; gap: 10px; margin-bottom: 22px; }
+  .search-row input {
+    flex: 1; background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; font-size: 14px; outline: none;
+    transition: border-color 0.15s;
+  }
+  .search-row input:focus { border-color: var(--accent); }
+  .section-label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
+  .items { display: flex; flex-direction: column; }
+  .item {
+    padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--panel); margin-bottom: 10px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .item:hover { border-color: var(--border-2); background: var(--panel-2); }
+  .item .uri { font-family: var(--mono); font-size: 12px; color: var(--accent-2); margin-bottom: 6px; word-break: break-all; }
+  .item .body { font-size: 13px; color: var(--text-2); white-space: pre-wrap; word-break: break-word; }
+  .item .meta { font-size: 11px; color: var(--text-3); margin-top: 8px; font-family: var(--mono); }
+  .skel { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; }
+  .skel .line { height: 10px; border-radius: 5px; background: var(--panel-2); margin-bottom: 8px; animation: pulse 1.4s ease-in-out infinite; }
+  .skel .line:last-child { margin-bottom: 0; }
+  @keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+  .empty { color: var(--text-3); font-size: 13px; padding: 24px 0; text-align: center; }
+  .err { color: var(--red); font-size: 13px; padding: 12px 0; }
+  .token-form { border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; background: var(--panel); display: flex; flex-direction: column; gap: 12px; }
+  .auth-banner {
+    display: flex; align-items: center; gap: 8px; font-size: 12px;
+    padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);
+    color: var(--text-2);
+  }
+  .auth-banner .ok { color: var(--green); }
+  @media (max-width: 768px) {
+    .shell { grid-template-columns: 1fr; }
+    aside { border-right: 0; border-bottom: 1px solid var(--border); padding: 18px; }
+    main { padding: 20px; }
+  }
 </style>
 </head>
 <body>
-<h1>cf-noc-mem · memory</h1>
-<div class="bar">
-  <input id="token" placeholder="API token" type="password">
-  <button onclick="loadBoot()">加载</button>
-  <input id="q" placeholder="搜索记忆…" onkeydown="if(event.key==='Enter')search()">
-  <button onclick="search()">搜索</button>
+<div class="shell">
+  <aside>
+    <div class="brand">
+      <div class="brand-mark">N</div>
+      <div>
+        <div class="brand-name">cf-noc-mem</div>
+        <div class="brand-sub">memory on cloudflare</div>
+      </div>
+    </div>
+    <div class="status" id="status"><span class="dot" id="statusDot"></span><span id="statusText">checking</span></div>
+    <div id="authZone"></div>
+    <div class="hint">boot memories and full-text search. data stays in D1.</div>
+  </aside>
+  <main>
+    <div class="search-row">
+      <input id="q" placeholder="search memories" autocomplete="off" spellcheck="false">
+      <button class="btn" id="go">Search</button>
+    </div>
+    <div class="section-label" id="sectionLabel">boot</div>
+    <div id="out"></div>
+  </main>
 </div>
-<div class="hint">只读面板:boot 记忆 + 全文搜索。token 仅存本机 localStorage。</div>
-<div id="out"></div>
 <script>
-const $ = (id) => document.getElementById(id);
-const OUT = $('out');
-function tok() { const t = $('token').value.trim(); if (t) localStorage.setItem('nm-token', t); return t || localStorage.getItem('nm-token') || ''; }
-$('token').value = localStorage.getItem('nm-token') || '';
+var MODE = "__AUTH_MODE__";
+var TOK = localStorage.getItem("nm-token") || "";
+var OUT = document.getElementById("out");
+var Q = document.getElementById("q");
+var SECTION = document.getElementById("sectionLabel");
+var STATUS_DOT = document.getElementById("statusDot");
+var STATUS_TEXT = document.getElementById("statusText");
+var AUTH_ZONE = document.getElementById("authZone");
 
-async function rpc(id, method, name, args) {
-  const t = tok();
-  if (!t) { OUT.innerHTML = '<div class="err">先填 token</div>'; return null; }
-  const r = await fetch('/mcp', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t },
-    body: JSON.stringify({ jsonrpc: '2.0', id, method, params: { name, arguments: args } })
+function setStatus(ok, text) {
+  STATUS_DOT.className = "dot" + (ok ? " ok" : " err");
+  STATUS_TEXT.textContent = text;
+}
+
+function authHeaders(extra) {
+  var h = extra || {};
+  if (MODE === "bearer" && TOK) { h["Authorization"] = "Bearer " + TOK; }
+  return h;
+}
+
+function api(path, extra) {
+  return fetch(path, { headers: authHeaders(extra) }).then(function (r) {
+    if (r.status === 401) throw new Error("unauthorized");
+    return r.json();
   });
-  const d = await r.json();
-  if (d.error) { OUT.innerHTML = '<div class="err">' + (d.error.message || 'rpc error') + '</div>'; return null; }
-  return d.result?.content?.[0]?.text ?? '';
 }
 
-function render(text) {
-  const blocks = text.split(/\n\n+/);
-  OUT.innerHTML = blocks.map(b => {
-    const m = b.match(/^([a-z]+:\/\/[^\n]+)\n?([\s\S]*)$/);
-    return m ? '<div class="mem"><div class="uri">' + m[1] + '</div><pre>' + m[2] + '</pre></div>'
-             : '<div class="mem"><pre>' + b + '</pre></div>';
-  }).join('');
+function renderBoot(text) {
+  var blocks = text.split(/\n{2,}/).filter(Boolean);
+  if (!blocks.length) { OUT.innerHTML = '<div class="empty">no memories yet. write via MCP: create_memory(core://agent, ...)</div>'; return; }
+  OUT.innerHTML = blocks.map(renderBlock).join("");
 }
 
-async function loadBoot() { OUT.innerHTML = '<div class="hint">loading…</div>'; const t = await rpc(1, 'tools/call', 'read_memory', { uri: 'system://boot' }); if (t !== null) render(t); }
-async function search() { const q = $('q').value.trim(); if (!q) return; OUT.innerHTML = '<div class="hint">searching…</div>'; const t = await rpc(2, 'tools/call', 'search_memory', { query: q }); if (t !== null) render(t === '(no results)' ? '<div class="hint">no results</div>' : t); }
+function renderSearch(hits) {
+  if (!hits || !hits.length) { OUT.innerHTML = '<div class="empty">no results</div>'; return; }
+  OUT.innerHTML = hits.map(function (h) {
+    return '<div class="item"><div class="uri">' + esc(h.uri) + '</div><div class="body">' + esc(h.snippet || "") + '</div><div class="meta">p' + (h.priority || 0) + '</div></div>';
+  }).join("");
+}
+
+function renderBlock(b) {
+  var m = b.match(/^([a-z]+:\/\/[^\n]+)\n?([\s\S]*)$/);
+  if (m) {
+    return '<div class="item"><div class="uri">' + esc(m[1]) + '</div><div class="body">' + esc(m[2].trim()) + '</div></div>';
+  }
+  return '<div class="item"><div class="body">' + esc(b.trim()) + '</div></div>';
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function skeleton() {
+  OUT.innerHTML = '<div class="skel"><div class="line" style="width:40%"></div><div class="line" style="width:90%"></div><div class="line" style="width:70%"></div></div>' +
+    '<div class="skel"><div class="line" style="width:55%"></div><div class="line" style="width:85%"></div></div>';
+}
+
+function loadBoot() {
+  skeleton(); SECTION.textContent = "boot";
+  api("/admin/boot").then(function (d) { renderBoot(d.text); }).catch(function (e) { OUT.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+}
+
+function doSearch() {
+  var q = Q.value.trim();
+  if (!q) { loadBoot(); return; }
+  skeleton(); SECTION.textContent = "search: " + q;
+  api("/admin/search?q=" + encodeURIComponent(q)).then(function (d) { renderSearch(d.hits); }).catch(function (e) { OUT.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+}
+
+function renderAuth() {
+  if (MODE === "access") {
+    setStatus(true, "access verified");
+    AUTH_ZONE.innerHTML = '<div class="auth-banner"><span class="ok">&#9679;</span> authenticated via Cloudflare Access</div>';
+    loadBoot();
+  } else {
+    setStatus(false, "bearer required");
+    AUTH_ZONE.innerHTML =
+      '<div class="token-form">' +
+      '<div class="field"><label for="tok">API token</label><input id="tok" type="password" placeholder="enter token" autocomplete="off"></div>' +
+      '<button class="btn" id="tokGo">Unlock</button>' +
+      '<div class="hint">no token? set one: wrangler secret put API_TOKEN. or protect this page with Cloudflare Access.</div>' +
+      '</div>';
+    if (TOK) document.getElementById("tok").value = TOK;
+    document.getElementById("tokGo").addEventListener("click", function () {
+      TOK = document.getElementById("tok").value.trim();
+      localStorage.setItem("nm-token", TOK);
+      verifyAndLoad();
+    });
+    document.getElementById("tok").addEventListener("keydown", function (e) { if (e.key === "Enter") document.getElementById("tokGo").click(); });
+    if (TOK) verifyAndLoad();
+  }
+}
+
+function verifyAndLoad() {
+  setStatus(false, "verifying");
+  api("/admin/boot").then(function (d) { setStatus(true, "connected"); renderBoot(d.text); })
+    .catch(function () { setStatus(false, "invalid token"); OUT.innerHTML = '<div class="err">token rejected</div>'; });
+}
+
+document.getElementById("go").addEventListener("click", doSearch);
+Q.addEventListener("keydown", function (e) { if (e.key === "Enter") doSearch(); });
+renderAuth();
 </script>
 </body>
 </html>`;

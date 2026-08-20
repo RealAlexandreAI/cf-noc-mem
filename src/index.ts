@@ -1,6 +1,6 @@
 import { checkAuth } from "./auth";
 import { Env } from "./config";
-import { syncSearchFromPaths } from "./db";
+import { searchMemory, syncSearchFromPaths, systemBoot } from "./db";
 import { handleMcpRequest } from "./mcp";
 import { UI_HTML } from "./ui";
 
@@ -24,6 +24,12 @@ async function takeSnapshot(env: Env): Promise<string> {
   return key;
 }
 
+async function jsonOk(body: unknown): Promise<Response> {
+  return new Response(JSON.stringify(body), {
+    headers: { "content-type": "application/json", "cache-control": "no-store" },
+  });
+}
+
 export default {
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
     await takeSnapshot(env);
@@ -32,10 +38,14 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
 
-    // Web panel lives under /admin so one Access app ("/admin/*") protects
+    // Web panel lives under /admin so one Access app ("/admin") protects
     // both the UI and admin API, leaving /mcp outside any Access app.
     if ((url.pathname === "/admin" || url.pathname === "/admin/") && req.method === "GET") {
-      return new Response(UI_HTML, {
+      // Inject auth mode: "access" when Cloudflare Access validated this browser,
+      // else "bearer" (the panel asks for a token).
+      const accessOk = !!req.headers.get("Cf-Access-Authenticated-User-Email");
+      const html = UI_HTML.replace("__AUTH_MODE__", accessOk ? "access" : "bearer");
+      return new Response(html, {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store, no-cache, must-revalidate",
@@ -43,14 +53,25 @@ export default {
       });
     }
 
+    // Admin data endpoints: dual-mode (Access header OR Bearer), see auth.ts.
+    const denied = checkAuth(req, env);
+    if (denied) return denied;
+
+    if (url.pathname === "/admin/boot" && req.method === "GET") {
+      const text = await systemBoot(env.DB);
+      return jsonOk({ text });
+    }
+    if (url.pathname === "/admin/search" && req.method === "GET") {
+      const q = url.searchParams.get("q") || "";
+      const hits = await searchMemory(env.DB, q, 20);
+      return jsonOk({ hits });
+    }
+
     if (url.pathname === "/health" && req.method === "GET") {
       return new Response(JSON.stringify({ status: "ok" }), {
         headers: { "content-type": "application/json" },
       });
     }
-
-    const denied = checkAuth(req, env);
-    if (denied) return denied;
 
     if (url.pathname === "/admin/rebuild-search" && req.method === "POST") {
       await syncSearchFromPaths(env.DB);
