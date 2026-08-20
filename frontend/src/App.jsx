@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { ShieldCheck, Database, LayoutGrid, Sparkles, AlertCircle, Layers, Settings } from 'lucide-react';
+import { ShieldCheck, Database, LayoutGrid, Sparkles, AlertCircle, Settings } from 'lucide-react';
 import clsx from 'clsx';
 
 import ReviewPage from './features/review/ReviewPage';
@@ -10,10 +10,10 @@ import MaintenancePage from './features/maintenance/MaintenancePage';
 import SettingsDrawer from './features/settings/SettingsDrawer';
 import TokenAuth from './components/TokenAuth';
 import { ToastContainer } from './components/Toast';
-import { AUTH_ERROR_EVENT, getNamespaces } from './lib/api';
+import { AUTH_ERROR_EVENT } from './lib/api';
 import { detectLocale } from './i18n/index';
-
-const NAMESPACE_SWITCH_ROOT_REDIRECT_KEY = 'nocturne:namespace-switch-root-redirect';
+import { Button } from './components/ui/button';
+import { cn } from './lib/utils';
 
 const consumeTokenFromUrl = () => {
   const params = new URLSearchParams(window.location.search);
@@ -28,162 +28,55 @@ const consumeTokenFromUrl = () => {
   return true;
 };
 
-// ---------------------------------------------------------------------------
-// NamespaceSelector — lets the user switch between agent namespaces.
-//
-// The selector is always visible so that users can manually enter a namespace
-// even before any memories have been written (e.g. after a fresh deployment).
-// Known namespaces fetched from the DB are offered as dropdown options, but
-// the user can also type a custom value into the input box.
-//
-// Selected namespace is stored in localStorage; the axios interceptor in
-// api.js attaches it as X-Namespace on every request.
-// ---------------------------------------------------------------------------
-function NamespaceSelector() {
-  const [knownNamespaces, setKnownNamespaces] = useState([]);
-  const [selected, setSelected] = useState(
-    () => localStorage.getItem('selected_namespace') ?? ''
-  );
-  const [inputValue, setInputValue] = useState(
-    () => localStorage.getItem('selected_namespace') ?? ''
-  );
-  const [showInput, setShowInput] = useState(false);
-
-  useEffect(() => {
-    getNamespaces()
-      .then(nsList => setKnownNamespaces(nsList.filter(ns => ns !== '')))
-      .catch(() => setKnownNamespaces([]));
-  }, []);
-
-  const applyNamespace = (ns) => {
-    const trimmed = ns.trim();
-    const changed = trimmed !== selected;
-    setSelected(trimmed);
-    setInputValue(trimmed);
-    if (trimmed) {
-      localStorage.setItem('selected_namespace', trimmed);
-    } else {
-      localStorage.removeItem('selected_namespace');
-    }
-    if (changed) {
-      sessionStorage.setItem(
-        NAMESPACE_SWITCH_ROOT_REDIRECT_KEY,
-        JSON.stringify({ from: selected, to: trimmed, at: Date.now() })
-      );
-    }
-    window.location.reload();
-  };
-
-  const handleSelectChange = (e) => {
-    const val = e.target.value;
-    if (val === '__custom__') {
-      setShowInput(true);
-      return;
-    }
-    applyNamespace(val);
-  };
-
-  const handleInputKeyDown = (e) => {
-    if (e.key === 'Enter') applyNamespace(inputValue);
-    if (e.key === 'Escape') setShowInput(false);
-  };
-
-  const activeLabel = selected || '(default)';
-
-  return (
-    <div className="flex items-center gap-2 text-sm">
-      <Layers size={14} className="text-slate-400 flex-shrink-0" />
-      {showInput ? (
-        <input
-          autoFocus
-          type="text"
-          value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
-          onKeyDown={handleInputKeyDown}
-          onBlur={() => setShowInput(false)}
-          placeholder="namespace (Enter to apply)"
-          className="bg-slate-800 border border-indigo-500 text-slate-200 rounded px-2 py-1 text-xs w-40 focus:outline-none"
-        />
-      ) : (
-        <select
-          value={selected}
-          onChange={handleSelectChange}
-          className="bg-slate-800 border border-slate-700 text-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          title={`Current namespace: ${activeLabel}`}
-        >
-          <option value="">(default)</option>
-          {knownNamespaces.map(ns => (
-            <option key={ns} value={ns}>{ns}</option>
-          ))}
-          {selected && !knownNamespaces.includes(selected) && (
-            <option key={selected} value={selected}>{selected}</option>
-          )}
-          <option value="__custom__">+ enter custom…</option>
-        </select>
-      )}
-    </div>
-  );
-}
+const NAV_ITEMS = [
+  { to: '/review', icon: ShieldCheck, key: 'app.nav.review' },
+  { to: '/memory', icon: Database, key: 'app.nav.memory' },
+  { to: '/maintenance', icon: Sparkles, key: 'app.nav.maintenance' },
+];
 
 function Layout() {
   const { t } = useTranslation();
   const location = useLocation();
-  const isReviewPage = location.pathname.startsWith('/review');
-  const isMaintenancePage = location.pathname.startsWith('/maintenance');
 
   return (
-    <div className="flex flex-col h-screen bg-slate-950 text-slate-200">
+    <div className="flex flex-col h-screen bg-background text-foreground">
       {/* Top Navigation Bar */}
-      <div className="h-12 border-b border-slate-800 bg-slate-900 flex items-center px-4 gap-6 flex-shrink-0 z-10">
-        <div className="font-bold text-slate-100 flex items-center gap-2 mr-4">
-          <LayoutGrid className="w-5 h-5 text-indigo-500" />
+      <div className="h-12 border-b border-border bg-card flex items-center px-4 gap-6 flex-shrink-0 z-10">
+        <div className="font-bold flex items-center gap-2 mr-4">
+          <LayoutGrid className="w-5 h-5 text-primary" />
           <span data-testid="app-brand">{t('app.nav.brand')}</span>
         </div>
 
         <nav className="flex items-center gap-1 h-full">
-          <NavLink
-            to="/review"
-            className={({ isActive }) => clsx(
-              "h-full flex items-center gap-2 px-4 text-sm font-medium border-b-2 transition-colors",
-              isActive ? "border-indigo-500 text-indigo-400 bg-slate-800/50" : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30"
-            )}
-          >
-            <ShieldCheck size={16} />
-            {t('app.nav.review')}
-          </NavLink>
-
-          <NavLink
-            to="/memory"
-            className={({ isActive }) => clsx(
-              "h-full flex items-center gap-2 px-4 text-sm font-medium border-b-2 transition-colors",
-              isActive ? "border-emerald-500 text-emerald-400 bg-slate-800/50" : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30"
-            )}
-          >
-            <Database size={16} />
-            {t('app.nav.memory')}
-          </NavLink>
-
-          <NavLink
-            to="/maintenance"
-            className={({ isActive }) => clsx(
-              "h-full flex items-center gap-2 px-4 text-sm font-medium border-b-2 transition-colors",
-              isActive ? "border-amber-500 text-amber-400 bg-slate-800/50" : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30"
-            )}
-          >
-            <Sparkles size={16} />
-            {t('app.nav.maintenance')}
-          </NavLink>
+          {NAV_ITEMS.map(({ to, icon: Icon, key }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                cn(
+                  'h-full flex items-center gap-2 px-4 text-sm font-medium border-b-2 transition-colors',
+                  isActive
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                )
+              }
+            >
+              <Icon size={16} />
+              {t(key)}
+            </NavLink>
+          ))}
         </nav>
 
         <div className="ml-auto flex items-center gap-4">
-          {!isReviewPage && !isMaintenancePage && <NamespaceSelector />}
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => window.dispatchEvent(new CustomEvent('open-settings'))}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+            className="text-muted-foreground hover:text-foreground"
           >
             <Settings size={16} />
             {t('app.nav.settings')}
-          </button>
+          </Button>
         </div>
       </div>
 

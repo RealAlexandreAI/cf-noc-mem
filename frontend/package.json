@@ -11,12 +11,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@base-ui/react": "^1.7.0",
     "axios": "^1.16.1",
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.0.0",
     "date-fns": "^2.30.0",
     "diff": "^5.2.2",
     "i18next": "^26.2.0",
     "lucide-react": "^0.290.0",
+    "motion": "^13.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-i18next": "^17.0.8",
@@ -24,7 +27,8 @@
     "react-router-dom": "^6.30.3",
     "react-split": "^2.0.14",
     "remark-gfm": "^4.0.1",
-    "tailwind-merge": "^2.0.0"
+    "tailwind-merge": "^2.0.0",
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

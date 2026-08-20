@@ -21,7 +21,8 @@
       "section_boot_uris": "启动 URI",
       "section_presets": "启动预设",
       "section_maintenance": "记忆审计与臃肿阈值",
-      "section_domains": "记忆域名"
+      "section_domains": "记忆域名",
+      "section_about": "关于"
     },
     "error": {
       "connection_refused": "无法连接到后端服务 (Connection Refused)",
@@ -218,7 +219,7 @@
     "sidebar": {
       "title": "记忆核心",
       "subtitle": "神经探索者 v2.0",
-      "domains": "域名",
+      "domains": "记忆树",
       "current_path": "当前路径",
       "domain_label": "{{domain}} 记忆"
     },
@@ -333,7 +334,7 @@
     },
     "sidebar": {
       "title": "全局审查",
-      "subtitle": "所有命名空间"
+      "subtitle": "记忆变更审查"
     },
     "action": {
       "integrate_all": "全部合并",

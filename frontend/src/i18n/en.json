@@ -1,6 +1,5 @@
 {
   "_comment": "Key naming: {section}.{component}.{key}. Example: 'app.nav.review' for Review & Audit nav link. English is canonical.",
-
   "app": {
     "nav": {
       "brand": "Nocturne Admin",
@@ -23,7 +22,8 @@
       "section_boot_uris": "Boot URIs",
       "section_presets": "Boot Presets",
       "section_maintenance": "Memory Audit Bloat Threshold",
-      "section_domains": "Memory Domains"
+      "section_domains": "Memory Domains",
+      "section_about": "About"
     },
     "error": {
       "connection_refused": "Cannot connect to backend service (Connection Refused)",
@@ -38,7 +38,6 @@
       "connecting": "Connecting to Memory Core..."
     }
   },
-
   "auth": {
     "title": "Nocturne Admin",
     "subtitle": "Memory Dashboard",
@@ -50,7 +49,6 @@
     "network_error": "Connection failed, please check server status",
     "footer": "Nocturne Memory"
   },
-
   "settings": {
     "server": {
       "port_label": "Port",
@@ -207,7 +205,6 @@
       "impact_hint": "💡 Tip: Lowering the threshold prompts the AI to aggressively decompose bloated memories during audits; raising it allows longer single nodes."
     }
   },
-
   "memory": {
     "domains": {
       "already_exists": "Domain already exists",
@@ -223,7 +220,7 @@
     "sidebar": {
       "title": "Memory Core",
       "subtitle": "Neural Explorer v2.0",
-      "domains": "Domains",
+      "domains": "Memory Tree",
       "current_path": "Current Path",
       "domain_label": "{{domain}} Memories"
     },
@@ -316,7 +313,6 @@
       "delete_failed": "Delete failed: {{error}}"
     }
   },
-
   "review": {
     "error": {
       "disconnected": "Disconnected from Neural Core (backend offline).",
@@ -339,7 +335,7 @@
     },
     "sidebar": {
       "title": "Global Review",
-      "subtitle": "All Namespaces"
+      "subtitle": "memory change review"
     },
     "action": {
       "integrate_all": "Integrate All",
@@ -387,7 +383,6 @@
       "select_memory": "Select a memory fragment to inspect"
     }
   },
-
   "maintenance": {
     "error": {
       "load_orphans_failed": "Failed to load orphan memories: {{error}}",
@@ -475,7 +470,6 @@
       "no_path": "Target #{{id}} (no paths)"
     }
   },
-
   "snapshot": {
     "empty_sequence": "Empty Sequence",
     "action_created": "Created",
@@ -483,7 +477,6 @@
     "action_modified": "Modified",
     "rows": "{{count}} rows"
   },
-
   "diff": {
     "no_changes": "No changes detected in content.",
     "removed": "REMOVED",
