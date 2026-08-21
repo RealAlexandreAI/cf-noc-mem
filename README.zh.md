@@ -221,7 +221,7 @@ Claude Desktop（`claude_desktop_config.json`）用同样的结构：
 - 再读 `system://focus` 看哪些工作树最近在动——直接续上活跃的那个。（`system://recent` 是简报的子集，不必单独读。）
 
 ### 读取
-- 优先 `search_memory` 而不是浏览——它能把绑定触发词的记忆顶到 FTS 噪音之上。
+- 优先 `search_memory` 而不是浏览——它能把绑定触发词的记忆顶到 FTS 噪音之上，且（启用 Vectorize 后）对"与记忆毫无共同关键词"的查询也能语义召回。
 - 定期读 `system://diagnostic/noc`，发现陈旧、孤儿或过于拥挤的记忆。
 
 ### 写入

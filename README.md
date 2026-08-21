@@ -223,7 +223,7 @@ The plugins do two things beyond the tools: a **session-start boot** and **memor
 - Then `system://focus` to see which working trees were touched recently — resume the active one. (`system://recent` is a subset of the briefing; no need to read it separately.)
 
 ### Read
-- Prefer `search_memory` over browsing — it surfaces trigger-keyword-bound memories above FTS noise.
+- Prefer `search_memory` over browsing — it surfaces trigger-keyword-bound memories above FTS noise, and (when Vectorize is enabled) semantic recall for queries that share no keywords with the memory.
 - Periodically read `system://diagnostic/noc` to catch stale, orphaned or crowded memories.
 
 ### Write
