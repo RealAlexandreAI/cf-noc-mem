@@ -16,7 +16,7 @@
     {
       "binding": "DB",
       "database_name": "noc_mem",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+      "database_id": "d9adc939-03ef-48fd-a04c-50221a9e73df"
     }
   ],
   "r2_buckets": [
@@ -34,12 +34,6 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": true
   },
-  "routes": [
-    {
-      "pattern": "REPLACE_WITH_YOUR_DOMAIN",
-      "custom_domain": true
-    }
-  ],
   "triggers": {
     "crons": [
       "0 3 * * *"
