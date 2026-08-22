@@ -73,10 +73,11 @@ export default {
 
   async handle(req: Request, env: Env, url: URL): Promise<Response> {
 
-    // The whole panel lives under /admin (Cloudflare Access guards /admin).
-    // /mcp and /health stay public (worker-gated); /assets/* are static build
-    // files; /api/* is the REST contract (Bearer-gated). Everything else
-    // 302s to /admin/ so no page is served outside the Access boundary.
+    // The whole panel lives under /admin (Cloudflare Access guards the whole
+    // site: email OTP for humans, service token for /mcp). /health stays open
+    // via a bypass app; /assets/* are static build files; /api/* is the REST
+    // contract (Access-guarded). Everything else 302s to /admin/ so no page
+    // is served outside the Access boundary.
     const isAsset = url.pathname.startsWith("/assets/");
     if (!isAsset && url.pathname !== "/mcp" && url.pathname !== "/health" && !url.pathname.startsWith("/admin") && !url.pathname.startsWith("/api/")) {
       const target = "/admin/";
@@ -86,7 +87,7 @@ export default {
       });
     }
 
-    // Admin data endpoints: dual-mode (Access header OR Bearer), see auth.ts.
+    // Admin + MCP endpoints: edge-trust auth, see auth.ts.
     const denied = checkAuth(req, env);
     if (denied) return denied;
 

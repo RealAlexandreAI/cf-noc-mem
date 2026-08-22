@@ -46,7 +46,7 @@ Most "agent memory" setups bolt a vector DB onto a chat client. Noc Memory treat
 | `list_audit(uri?, limit?)` | browse recent audit entries to pick an `audit_id` for rollback |
 | `reindex_vectors(limit?, offset?)` | *(optional)* backfill semantic vectors in batches (Workers subrequest cap); walk with offset until done — only needed after enabling §9 on an already-populated store |
 
-Also: `create_memory` accepts an explicit `title` (path name) so the content's first line is not eaten; REST API is reachable at `/api/*` with Bearer auth.
+Also: `create_memory` accepts an explicit `title` (path name) so the content's first line is not eaten; REST API is reachable at `/api/*` behind Cloudflare Access.
 
 ## Deploy to your own Cloudflare
 
@@ -114,23 +114,25 @@ Workers automatically get `https://<worker-name>.<your-subdomain>.workers.dev`. 
 ### 7. Verify
 
 ```bash
-# MCP handshake (Bearer auth)
+# MCP handshake (Cloudflare Access service token)
 curl -X POST https://mem.example.com/mcp \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $API_TOKEN" \
+  -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+  -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
 
 # admin panel lives at /admin/ (any non-/admin path redirects there)
 open https://mem.example.com/admin/
 ```
 
-### 8. Protect the admin panel (recommended)
+### 8. Protect the site (recommended)
 
-The whole panel lives under `/admin`; `/mcp` and static assets stay public (MCP is Bearer-gated, assets are a UI shell with no data). Put the panel behind **Cloudflare Access**:
+The whole site (including `/mcp` and `/admin`) is guarded by **Cloudflare Access**:
 
-- Zero Trust → Access → Applications → Add → self-hosted
-- Domain: `mem.example.com/admin` → policy: allow your email(s)
-- `/mcp` stays outside Access — agents reach it with Bearer only
+- Zero Trust → Access → Applications → Add → self-hosted, domain `mem.example.com` (whole site)
+- Policy 1: allow your email(s) → humans (dashboard, `/admin`, `/api`)
+- Policy 2: **Service Auth** (service token, action `non_identity`) → machines hit `/mcp` with `CF-Access-Client-Id` / `CF-Access-Client-Secret` headers
+- Optionally add a bypass policy for `/health` if you run uptime checks
 
 ### 9. (Optional) Semantic search with Vectorize
 
@@ -170,11 +172,11 @@ Deploy once, then plug any agent into your instance:
 - **[dsh-noc-memory](https://www.npmjs.com/package/dsh-noc-memory)** — dsh plugin: session-start boot + daily briefing + memory tools (`dsh plugin --profile web add dsh-noc-memory`)
 - **[pi-noc-memory](https://www.npmjs.com/package/pi-noc-memory)** — pi extension: `SessionStart` boot protocol + memory rules (`pi install npm:pi-noc-memory`)
 
-Both talk to your `/mcp` endpoint with a Bearer token.
+Both talk to your `/mcp` endpoint with an Access Service Token (`CF-Access-Client-Id` / `CF-Access-Client-Secret` headers).
 
 ## Manual MCP config (no plugin)
 
-No plugin needed — any MCP client that supports **Streamable HTTP** can talk to your server directly. The endpoint is `https://<your-host>/mcp`, authenticated with the `Authorization: Bearer <API_TOKEN>` header (the same token you set in step 3).
+No plugin needed — any MCP client that supports **Streamable HTTP** can talk to your server directly. The endpoint is `https://<your-host>/mcp`, authenticated with the `CF-Access-Client-Id` / `CF-Access-Client-Secret` headers (a Zero Trust Service Token).
 
 Generic `mcpServers` entry (Claude Code, Cursor, VS Code, etc.):
 
@@ -185,7 +187,8 @@ Generic `mcpServers` entry (Claude Code, Cursor, VS Code, etc.):
       "type": "http",
       "url": "https://mem.example.com/mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_API_TOKEN"
+        "CF-Access-Client-Id": "YOUR_CLIENT_ID",
+        "CF-Access-Client-Secret": "YOUR_CLIENT_SECRET"
       }
     }
   }
@@ -201,7 +204,8 @@ Claude Desktop (`claude_desktop_config.json`) uses the same shape:
       "type": "http",
       "url": "https://mem.example.com/mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_API_TOKEN"
+        "CF-Access-Client-Id": "YOUR_CLIENT_ID",
+        "CF-Access-Client-Secret": "YOUR_CLIENT_SECRET"
       }
     }
   }

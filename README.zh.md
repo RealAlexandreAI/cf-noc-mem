@@ -44,7 +44,7 @@
 | `list_audit(uri?, limit?)` | 浏览最近审计记录，取 `audit_id` 用于回滚 |
 | `reindex_vectors(limit?, offset?)` | *（可选）* 分批补建语义向量（Workers 子请求上限）；用 offset 递进直到完成——只在已存大量记忆后启用 §9 时才需要 |
 
-另外：`create_memory` 支持显式 `title`（路径名），内容首行不再被吞；REST API 可通过 `/api/*` + Bearer 直接访问。
+另外：`create_memory` 支持显式 `title`（路径名），内容首行不再被吞；REST API 可通过 `/api/*`（Cloudflare Access 保护）访问。
 
 ## 部署到自己的 Cloudflare
 
@@ -66,7 +66,7 @@ npx wrangler login   # 如果还没登录
 ### 3. 配置
 
 ```bash
-# 你的 MCP Bearer 密钥（agent 用它认证）
+# 你的 MCP 凭据（见下文 Access Service Token）
 echo -n "$(openssl rand -hex 24)" | npx wrangler secret put API_TOKEN
 
 # 本地开发密钥（仅用于 npx wrangler dev）
@@ -112,23 +112,25 @@ Workers 会自动获得 `https://<worker-name>.<你的子域>.workers.dev`。要
 ### 7. 验证
 
 ```bash
-# MCP 握手（Bearer 认证）
+# MCP 握手（Cloudflare Access Service Token）
 curl -X POST https://mem.example.com/mcp \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $API_TOKEN" \
+  -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+  -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
 
 # 管理面板在 /admin/（任何非 /admin 路径都会 302 过去）
 open https://mem.example.com/admin/
 ```
 
-### 8. 保护管理面板（推荐）
+### 8. 保护站点（推荐）
 
-整个面板都在 `/admin` 下；`/mcp` 和静态资源保持公开（MCP 有 Bearer 门控，静态资源只是没有数据的 UI 壳）。把面板放到 **Cloudflare Access** 后面：
+整个站点（含 `/mcp` 和 `/admin`）由 **Cloudflare Access** 保护：
 
-- Zero Trust → Access → Applications → Add → self-hosted
-- Domain: `mem.example.com/admin` → policy: 只允许你的邮箱
-- `/mcp` 留在 Access 之外——agent 只用 Bearer 访问
+- Zero Trust → Access → Applications → Add → self-hosted，Domain: `mem.example.com`（整站）
+- Policy 1：allow 你的邮箱 → 人用（dashboard、`/admin`、`/api`）
+- Policy 2：**Service Auth**（service token，action `non_identity`）→ 机器用 `CF-Access-Client-Id` / `CF-Access-Client-Secret` 头访问 `/mcp`
+- 如有 uptime 监控，可另加 /health 的 bypass policy
 
 ### 9.（可选）语义搜索（Vectorize）
 
@@ -168,11 +170,11 @@ npx wrangler vectorize create noc-mem-vec --dimensions 1024 --metric cosine
 - **[dsh-noc-memory](https://www.npmjs.com/package/dsh-noc-memory)** — dsh 插件：会话开始自动加载启动记忆 + 每日简报 + 记忆工具（`dsh plugin --profile web add dsh-noc-memory`）
 - **[pi-noc-memory](https://www.npmjs.com/package/pi-noc-memory)** — pi 扩展：`SessionStart` 启动协议 + 记忆规则（`pi install npm:pi-noc-memory`）
 
-两者都用 Bearer token 访问你的 `/mcp` 端点。
+两者都用 Access Service Token（`CF-Access-Client-Id` / `CF-Access-Client-Secret` 头）访问你的 `/mcp` 端点。
 
 ## 手动 MCP 配置（不装插件）
 
-不需要插件——任何支持 **Streamable HTTP** 的 MCP 客户端都能直接连你的服务器。端点是 `https://<你的域名>/mcp`，用 `Authorization: Bearer <API_TOKEN>` 头认证（就是第 3 步设置的那个 token）。
+不需要插件——任何支持 **Streamable HTTP** 的 MCP 客户端都能直接连你的服务器。端点是 `https://<你的域名>/mcp`，用 `CF-Access-Client-Id` / `CF-Access-Client-Secret` 头认证（Zero Trust 里的 Service Token）。
 
 通用的 `mcpServers` 配置（Claude Code、Cursor、VS Code 等）：
 
@@ -183,7 +185,8 @@ npx wrangler vectorize create noc-mem-vec --dimensions 1024 --metric cosine
       "type": "http",
       "url": "https://mem.example.com/mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_API_TOKEN"
+        "CF-Access-Client-Id": "YOUR_CLIENT_ID",
+        "CF-Access-Client-Secret": "YOUR_CLIENT_SECRET"
       }
     }
   }
@@ -199,7 +202,8 @@ Claude Desktop（`claude_desktop_config.json`）用同样的结构：
       "type": "http",
       "url": "https://mem.example.com/mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_API_TOKEN"
+        "CF-Access-Client-Id": "YOUR_CLIENT_ID",
+        "CF-Access-Client-Secret": "YOUR_CLIENT_SECRET"
       }
     }
   }
